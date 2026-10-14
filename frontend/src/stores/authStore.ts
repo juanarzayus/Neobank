@@ -14,11 +14,25 @@ export const useAuthStore = defineStore('auth', () => {
         user.value = response.data.user;
     };
 
+    type AuthResponse = { accessToken: string; user: UserProfile };
+
+    const login = async (email: string, password: string) => {
+        const response = await api.post<AuthResponse>('/auth/login', { email, password });
+        accessToken.value = response.data.accessToken;
+        user.value = response.data.user;
+    };
+
+    const register = async (payload: { firstName: string; lastName: string; email: string; password: string }) => {
+        const response = await api.post<AuthResponse>('/auth/register', payload);
+        accessToken.value = response.data.accessToken;
+        user.value = response.data.user;
+    };
+
     const logout = () => {
         user.value = null;
         accessToken.value = null;
         // Aquí también llamarías a api.post('/auth/logout') para que el backend destruya la cookie.
     };
 
-    return { user, accessToken, refreshSession, logout };
+    return { user, accessToken, refreshSession, login, register, logout };
 });
