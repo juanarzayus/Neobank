@@ -1,0 +1,63 @@
+/* frontend/src/assets/main.css - Estilos estándar para Neobanco */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #1f2937;
+  background-color: #f9fafb;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Layout Utilidades Básicas Estándar */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.flex-1 { flex: 1 1 0%; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: 0.5rem; }
+.gap-4 { gap: 1rem; }
+
+.h-screen { height: 100vh; }
+.min-h-screen { min-height: 100vh; }
+.h-16 { height: 4rem; }
+.w-full { width: 100%; }
+.w-64 { width: 16rem; }
+.max-w-md { max-width: 28rem; }
+
+.overflow-hidden { overflow: hidden; }
+.overflow-y-auto { overflow-y: auto; }
+
+.p-2 { padding: 0.5rem; }
+.p-4 { padding: 1rem; }
+.p-6 { padding: 1.5rem; }
+.p-8 { padding: 2rem; }
+.px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+.mb-6 { margin-bottom: 1.5rem; }
+
+.bg-white { background-color: #ffffff; }
+.bg-gray-50 { background-color: #f9fafb; }
+.bg-blue-50 { background-color: #eff6ff; }
+
+.text-xl { font-size: 1.25rem; line-height: 1.75rem; }
+.text-2xl { font-size: 1.5rem; line-height: 2rem; }
+.font-bold { font-weight: 700; }
+.text-gray-700 { color: #374151; }
+
+.border-r { border-right: 1px solid #e5e7eb; }
+.border-b { border-bottom: 1px solid #e5e7eb; }
+.rounded { border-radius: 0.25rem; }
+.rounded-lg { border-radius: 0.5rem; }
+.shadow-md { box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1); }
+
+.hover\:bg-gray-100:hover { background-color: #f3f4f6; }
