@@ -42,20 +42,31 @@ const router = createRouter({
     ]
 });
 
-// Implementación de Navigation Guards asíncronos[cite: 1]
+// Implementación de Navigation Guards asíncronos
 router.beforeEach(async (to, from, next) => {
     const authStore = useAuthStore();
     const requiresAuth = to.meta.requiresAuth;
 
-    if (requiresAuth && !authStore.accessToken) {
-        try {
-            await authStore.refreshSession();
-            next();
-        } catch (error) {
-            next('/login');
+    if (!requiresAuth) {
+        // Ruta pública (ej. /login): si ya hay sesión activa, ir al dashboard
+        if (to.path === '/login' && (authStore.accessToken || authStore.user)) {
+            return next('/dashboard');
         }
-    } else {
+        return next();
+    }
+
+    // Ruta protegida: verificar sesión
+    if (authStore.accessToken && authStore.user) {
+        // Ya hay sesión válida en memoria (real o demo)
+        return next();
+    }
+
+    // Intentar renovar sesión desde cookie (solo aplica si hay backend real)
+    try {
+        await authStore.refreshSession();
         next();
+    } catch {
+        next('/login');
     }
 });
 
