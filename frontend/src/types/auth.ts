@@ -1,5 +1,5 @@
 // src/types/auth.ts
-export type KycStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type KycStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'pending' | 'approved' | 'rejected';
 
 export interface UserProfile {
     id: string;
