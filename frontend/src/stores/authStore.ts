@@ -8,11 +8,26 @@ const DEMO_USER: UserProfile = {
     email: 'demo@novaneobank.com',
     firstName: 'Usuario',
     lastName: 'Demo',
+    preferredName: 'Usuario',
+    address: 'Av. Principal #100, Piso 4',
     kycStatus: 'approved',
     createdAt: new Date().toISOString(),
 };
 
 const DEMO_TOKEN = 'demo-access-token';
+
+const applyCustomUserData = (baseUser: UserProfile): UserProfile => {
+    try {
+        const raw = localStorage.getItem('nova_user_profile_' + baseUser.id) || localStorage.getItem('nova_user_profile');
+        if (raw) {
+            const custom = JSON.parse(raw);
+            return { ...baseUser, ...custom };
+        }
+    } catch {
+        // ignore json parse error
+    }
+    return baseUser;
+};
 
 export const useAuthStore = defineStore('auth', () => {
     const user = ref<UserProfile | null>(null);
@@ -22,7 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
     // Intenta restaurar sesión demo de sessionStorage al recargar
     const _restoreDemo = () => {
         if (sessionStorage.getItem('nova_demo') === '1') {
-            user.value = DEMO_USER;
+            user.value = applyCustomUserData(DEMO_USER);
             accessToken.value = DEMO_TOKEN;
             isDemo.value = true;
         }
@@ -32,7 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
     const refreshSession = async () => {
         // Si estamos en modo demo, simplemente renovamos el estado sin llamar al API
         if (isDemo.value || sessionStorage.getItem('nova_demo') === '1') {
-            user.value = DEMO_USER;
+            user.value = applyCustomUserData(DEMO_USER);
             accessToken.value = DEMO_TOKEN;
             isDemo.value = true;
             return;
@@ -40,7 +55,7 @@ export const useAuthStore = defineStore('auth', () => {
         // El backend valida la cookie HttpOnly y retorna un nuevo JWT.
         const response = await api.post<{ accessToken: string; user: UserProfile }>('/auth/refresh');
         accessToken.value = response.data.accessToken;
-        user.value = response.data.user;
+        user.value = applyCustomUserData(response.data.user);
     };
 
     type AuthResponse = { accessToken: string; user: UserProfile };
@@ -48,23 +63,44 @@ export const useAuthStore = defineStore('auth', () => {
     const login = async (email: string, password: string) => {
         const response = await api.post<AuthResponse>('/auth/login', { email, password });
         accessToken.value = response.data.accessToken;
-        user.value = response.data.user;
+        user.value = applyCustomUserData(response.data.user);
         isDemo.value = false;
     };
 
     const register = async (payload: { firstName: string; lastName: string; email: string; password: string }) => {
         const response = await api.post<AuthResponse>('/auth/register', payload);
         accessToken.value = response.data.accessToken;
-        user.value = response.data.user;
+        user.value = applyCustomUserData(response.data.user);
         isDemo.value = false;
     };
 
     /** Accede sin backend — útil para demo / frontend-only */
     const demoLogin = () => {
-        user.value = DEMO_USER;
+        user.value = applyCustomUserData(DEMO_USER);
         accessToken.value = DEMO_TOKEN;
         isDemo.value = true;
         sessionStorage.setItem('nova_demo', '1');
+    };
+
+    const updateProfile = (data: { preferredName?: string; email?: string; address?: string }) => {
+        if (!user.value) return;
+        user.value = {
+            ...user.value,
+            ...(data.preferredName !== undefined ? { preferredName: data.preferredName } : {}),
+            ...(data.email !== undefined && data.email ? { email: data.email } : {}),
+            ...(data.address !== undefined ? { address: data.address } : {}),
+        };
+        try {
+            const custom = {
+                preferredName: user.value.preferredName,
+                email: user.value.email,
+                address: user.value.address,
+            };
+            localStorage.setItem('nova_user_profile_' + user.value.id, JSON.stringify(custom));
+            localStorage.setItem('nova_user_profile', JSON.stringify(custom));
+        } catch {
+            // ignore
+        }
     };
 
     const logout = () => {
@@ -75,5 +111,5 @@ export const useAuthStore = defineStore('auth', () => {
         // En producción también llamarías: api.post('/auth/logout')
     };
 
-    return { user, accessToken, isDemo, refreshSession, login, register, demoLogin, logout };
+    return { user, accessToken, isDemo, refreshSession, login, register, demoLogin, updateProfile, logout };
 });

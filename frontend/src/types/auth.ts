@@ -6,6 +6,8 @@ export interface UserProfile {
     email: string;
     firstName: string;
     lastName: string;
+    preferredName?: string;
+    address?: string;
     kycStatus: KycStatus;
     createdAt: string; // ISO 8601 Date string
 }
