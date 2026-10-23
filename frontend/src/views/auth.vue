@@ -65,19 +65,6 @@
       </AppButton>
     </form>
 
-    <!-- Separador -->
-    <div class="divider">
-      <span>o</span>
-    </div>
-
-    <!-- Acceso demo (sin backend) -->
-    <button id="demo-login" type="button" class="demo-btn" @click="handleDemo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M13 10V3L4 14h7v7l9-11h-7z" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      Acceder como demo
-    </button>
-
     <p class="switch">
       {{ isRegister ? '¿Ya tienes cuenta?' : '¿Aún no tienes cuenta?' }}
       <a href="#" @click.prevent="setMode(!isRegister)">{{ isRegister ? 'Inicia sesión' : 'Regístrate' }}</a>
@@ -147,18 +134,13 @@ const onSubmit = async () => {
   } catch (e: any) {
     const isNetworkError = !e?.response;
     if (isNetworkError) {
-      serverError.value = 'No se pudo conectar con el servidor. Usa el acceso demo para continuar.';
+      serverError.value = 'No se pudo conectar con el servidor. Inténtalo de nuevo más tarde.';
     } else {
       serverError.value = e?.response?.data?.message || 'No pudimos completar la solicitud. Inténtalo de nuevo.';
     }
   } finally {
     loading.value = false;
   }
-};
-
-const handleDemo = () => {
-  authStore.demoLogin();
-  router.push('/dashboard');
 };
 </script>
 
@@ -254,49 +236,6 @@ const handleDemo = () => {
 .switch { text-align: center; margin-top: 1.25rem; font-size: 0.88rem; color: #64748b; }
 .switch a { color: #0a8f7a; font-weight: 700; }
 .switch a:hover { text-decoration: underline; }
-
-/* Separador */
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin: 1.25rem 0 0;
-  color: #94a3b8;
-  font-size: 0.8rem;
-}
-.divider::before,
-.divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #e2e8f0;
-}
-
-/* Botón demo */
-.demo-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.7rem 1rem;
-  border-radius: 0.8rem;
-  border: 1.5px dashed #cbd5e1;
-  background: transparent;
-  color: #475569;
-  font: inherit;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s, color 0.2s;
-  margin-bottom: 0.25rem;
-}
-.demo-btn svg { width: 16px; height: 16px; color: #00c9a7; }
-.demo-btn:hover {
-  border-color: #00c9a7;
-  background: rgba(0, 229, 192, 0.06);
-  color: #0a1a3c;
-}
 
 @media (max-width: 420px) {
   .row { grid-template-columns: 1fr; }
