@@ -15,6 +15,7 @@ export interface VirtualCard {
     tokenizedPan: string; // Ej: "**** **** **** 1234"
     expirationDate: string; // Formato MM/YY
     cvv?: string; // Solo se recibe al solicitar revelar los datos (challenge)
+    cardholderName?: string;
     status: CardStatus;
     spendingRules: SpendingRules;
     issuedAt: string;

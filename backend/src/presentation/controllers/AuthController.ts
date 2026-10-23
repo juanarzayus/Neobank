@@ -93,7 +93,20 @@ export const AuthController = {
   },
 
   async logout(_req: Request, res: Response) {
-    res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+    res.cookie(REFRESH_COOKIE, '', {
+      httpOnly: true,
+      secure: env.isProduction,
+      sameSite: 'lax',
+      path: '/api/v1/auth',
+      maxAge: 0,
+      expires: new Date(0),
+    });
+    res.clearCookie(REFRESH_COOKIE, {
+      httpOnly: true,
+      secure: env.isProduction,
+      sameSite: 'lax',
+      path: '/api/v1/auth',
+    });
     res.status(204).end();
   },
 

@@ -17,6 +17,7 @@
     </section>
 
     <!-- ===== BALANCE CARDS ROW ===== -->
+    <!-- ===== BALANCE CARDS ROW ===== -->
     <section class="stat-grid">
       <!-- Main balance hero -->
       <div class="balance-hero">
@@ -25,15 +26,15 @@
         <div class="balance-hero__body">
           <span class="balance-hero__label">Saldo total disponible</span>
           <div class="balance-hero__amount">
-            <span class="balance-hero__currency">{{ walletData.currency }}</span>
-            <span class="balance-hero__number">{{ formatAmount(walletData.balance) }}</span>
+            <span class="balance-hero__currency">$</span>
+            <span class="balance-hero__number">{{ formatAmount(totalBalance) }}</span>
           </div>
-          <div class="balance-hero__change" :class="walletData.change >= 0 ? 'positive' : 'negative'">
+          <div class="balance-hero__change" :class="monthlyNetChange >= 0 ? 'positive' : 'negative'">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <path v-if="walletData.change >= 0" d="M5 15l7-7 7 7" stroke-linecap="round" stroke-linejoin="round" />
+              <path v-if="monthlyNetChange >= 0" d="M5 15l7-7 7 7" stroke-linecap="round" stroke-linejoin="round" />
               <path v-else d="M5 9l7 7 7-7" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
-            {{ Math.abs(walletData.change) }}% este mes
+            {{ monthlyNetChange >= 0 ? '+' : '-' }}${{ formatAmount(Math.abs(monthlyNetChange)) }} este mes
           </div>
           <div class="balance-hero__actions">
             <router-link to="/wallet" class="hero-btn hero-btn--primary">
@@ -42,7 +43,7 @@
               </svg>
               Depositar
             </router-link>
-            <router-link to="/transactions" class="hero-btn hero-btn--ghost">
+            <router-link to="/wallet" class="hero-btn hero-btn--ghost">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M5 12h14M12 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
@@ -75,8 +76,10 @@
           </div>
           <div class="stat-card__info">
             <span class="stat-card__label">Ingresos del mes</span>
-            <span class="stat-card__value">+$3,420</span>
-            <span class="stat-card__sub positive">▲ 12.4%</span>
+            <span class="stat-card__value">+${{ formatAmount(monthlyIncome) }}</span>
+            <span class="stat-card__sub" :class="monthlyIncome > 0 ? 'positive' : 'neutral'">
+              {{ monthlyIncome > 0 ? '▲ Registrados' : 'Sin ingresos' }}
+            </span>
           </div>
         </div>
         <div class="stat-card">
@@ -88,8 +91,10 @@
           </div>
           <div class="stat-card__info">
             <span class="stat-card__label">Gastos del mes</span>
-            <span class="stat-card__value">-$1,280</span>
-            <span class="stat-card__sub negative">▼ 5.1%</span>
+            <span class="stat-card__value">-${{ formatAmount(monthlyExpenses) }}</span>
+            <span class="stat-card__sub" :class="monthlyExpenses > 0 ? 'negative' : 'neutral'">
+              {{ monthlyExpenses > 0 ? '▼ Consumos' : 'Sin gastos' }}
+            </span>
           </div>
         </div>
         <div class="stat-card">
@@ -109,7 +114,7 @@
       </div>
     </section>
 
-    <!-- ===== VIRTUAL CARDS CAROUSEL + TRANSACTIONS ===== -->
+    <!-- ===== VIRTUAL CARDS + TRANSACTIONS ===== -->
     <section class="mid-grid">
       <!-- Virtual Cards -->
       <div class="cards-panel">
@@ -128,7 +133,7 @@
           <router-link to="/cards" class="hero-btn hero-btn--primary">Emitir primera tarjeta</router-link>
         </div>
 
-        <div v-else class="cards-carousel" :style="{ '--card-offset': cardOffset + 'px' }">
+        <div v-else class="cards-carousel">
           <div
             v-for="(card, i) in cards.slice(0, 3)"
             :key="card.id"
@@ -139,19 +144,20 @@
             <div class="vc-top">
               <img :src="logo" alt="NOVA" class="vc-logo" />
               <span class="vc-status" :class="`vc-status--${card.status.toLowerCase()}`">
-                {{ card.status === 'ACTIVE' ? 'Activa' : card.status === 'FROZEN' ? 'Congelada' : 'Cancelada' }}
+                {{ statusLabel(card.status) }}
               </span>
             </div>
             <div class="vc-pan">{{ card.tokenizedPan }}</div>
+            <div class="vc-holder" v-if="card.cardholderName">{{ card.cardholderName }}</div>
             <div class="vc-bottom">
               <div class="vc-info">
                 <span class="vc-info__label">Vence</span>
                 <span class="vc-info__value">{{ card.expirationDate }}</span>
               </div>
               <div class="vc-info">
-                <span class="vc-info__label">Límite diario</span>
+                <span class="vc-info__label">Límite mensual</span>
                 <span class="vc-info__value">
-                  {{ card.spendingRules.dailyLimit ? '$' + card.spendingRules.dailyLimit.toLocaleString() : 'Sin límite' }}
+                  {{ card.spendingRules?.monthlyLimit ? '$' + card.spendingRules.monthlyLimit.toLocaleString() : (card.spendingRules?.dailyLimit ? '$' + card.spendingRules.dailyLimit.toLocaleString() + '/d' : 'Sin límite') }}
                 </span>
               </div>
               <div class="vc-chip">
@@ -175,39 +181,39 @@
         </div>
       </div>
 
-      <!-- Recent Transactions -->
+      <!-- Recent Movements -->
       <div class="transactions-panel">
         <div class="panel-header">
           <h2 class="panel-title">Movimientos recientes</h2>
-          <router-link to="/transactions" class="panel-link">Ver todos →</router-link>
+          <router-link to="/wallet" class="panel-link">Ver billetera →</router-link>
         </div>
 
         <div v-if="loading" class="txn-skeleton-list">
-          <div class="txn-skeleton" v-for="n in 5" :key="n"></div>
+          <div class="txn-skeleton" v-for="n in 4" :key="n"></div>
         </div>
 
-        <div v-else-if="transactions.length === 0" class="txn-empty">
-          <span>No hay movimientos registrados</span>
+        <div v-else-if="movements.length === 0" class="txn-empty">
+          <p>No hay movimientos registrados</p>
+          <router-link to="/wallet" class="panel-link">Hacer un depósito o transferencia →</router-link>
         </div>
 
         <ul v-else class="txn-list">
-          <li v-for="txn in transactions.slice(0, 6)" :key="txn.id" class="txn-item">
-            <div class="txn-icon" :class="`txn-icon--${txnColor(txn)}`">
+          <li v-for="m in movements.slice(0, 6)" :key="m.id" class="txn-item">
+            <div class="txn-icon" :class="isCredit(m) ? 'txn-icon--green' : 'txn-icon--red'">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path v-if="txn.type === 'DEPOSIT'" d="M12 5v14M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round" />
-                <path v-else-if="txn.type === 'WITHDRAWAL' || txn.type === 'CARD_PAYMENT'" d="M12 19V5M5 12l7 7 7-7" stroke-linecap="round" stroke-linejoin="round" />
-                <path v-else d="M7 16l-4-4m0 0l4-4m-4 4h14" stroke-linecap="round" stroke-linejoin="round" />
+                <path v-if="isCredit(m)" d="M12 5v14M5 12l7-7 7 7" stroke-linecap="round" stroke-linejoin="round" />
+                <path v-else d="M12 19V5M5 12l7 7 7-7" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
             </div>
             <div class="txn-details">
-              <span class="txn-name">{{ txn.merchantName || txnTypeLabel(txn.type) }}</span>
-              <span class="txn-date">{{ formatDate(txn.createdAt) }}</span>
+              <span class="txn-name">{{ m.description || movementTypeLabel[m.type] || 'Movimiento' }}</span>
+              <span class="txn-date">{{ formatDate(m.createdAt) }}</span>
             </div>
-            <div class="txn-amount" :class="txn.type === 'DEPOSIT' ? 'txn-amount--credit' : 'txn-amount--debit'">
-              {{ txn.type === 'DEPOSIT' ? '+' : '-' }}{{ txn.currency }} {{ formatAmount(txn.amount) }}
+            <div class="txn-amount" :class="isCredit(m) ? 'txn-amount--credit' : 'txn-amount--debit'">
+              {{ isCredit(m) ? '+' : '-' }}${{ formatAmount(m.amount) }}
             </div>
-            <div class="txn-status" :class="`txn-status--${txn.status.toLowerCase()}`">
-              {{ statusLabel(txn.status) }}
+            <div class="txn-status txn-status--completed">
+              Completado
             </div>
           </li>
         </ul>
@@ -221,8 +227,11 @@
           <h2 class="panel-title">Distribución de gastos</h2>
           <span class="panel-link">Este mes</span>
         </div>
-        <div class="spending-list">
-          <div v-for="cat in spendingCategories" :key="cat.name" class="spending-item">
+        <div v-if="dynamicSpendingCategories.length === 0" class="empty-mini">
+          <span>Sin consumos registrados este mes</span>
+        </div>
+        <div v-else class="spending-list">
+          <div v-for="cat in dynamicSpendingCategories" :key="cat.name" class="spending-item">
             <div class="spending-item__icon" :style="{ background: cat.color + '22', color: cat.color }">{{ cat.icon }}</div>
             <div class="spending-item__info">
               <span class="spending-item__name">{{ cat.name }}</span>
@@ -245,7 +254,7 @@
             <div class="bar-chart__bar-wrap">
               <div
                 class="bar-chart__bar"
-                :style="{ height: bar.pct + '%' }"
+                :style="{ height: Math.max(bar.pct, 6) + '%' }"
                 :class="{ 'bar-chart__bar--highlight': bar.today }"
               ></div>
             </div>
@@ -259,25 +268,77 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
 import type { VirtualCard } from '@/types/cards';
-import type { Transaction } from '@/types/transactions';
+import type { Account, AccountMovement } from '@/types/accounts';
 import { api } from '@/services/api';
+import { accountService } from '@/services/accountService';
 import logo from '@/assets/LOGONOVA.png';
 
 const authStore = useAuthStore();
+const getCardsStorageKey = () => {
+  const uid = authStore.user?.id;
+  return uid ? `nova_custom_cards_${uid}` : null;
+};
 
 const loading = ref(true);
 const cards = ref<VirtualCard[]>([]);
-const transactions = ref<Transaction[]>([]);
+const accounts = ref<Account[]>([]);
+const movements = ref<AccountMovement[]>([]);
 const activeCardIdx = ref(0);
-const cardOffset = computed(() => activeCardIdx.value * 0);
 
 const cardThemes = ['teal', 'indigo', 'rose'];
 
-// Wallet data (mock mientras no haya endpoint de resumen)
-const walletData = ref({ currency: 'USD', balance: 8_420.50, change: 7.3 });
+// Normalizer identical to cards.vue
+const normalizeCard = (c: any): VirtualCard => {
+  const pan = c.tokenizedPan || c.maskedNumber || ('**** **** **** ' + (c.id ? String(c.id).slice(-4) : '7788'));
+  const exp = c.expirationDate || '11/29';
+  const monthly = c.spendingRules?.monthlyLimit ?? (typeof c.monthlyLimit === 'number' ? c.monthlyLimit : null);
+  const daily = c.spendingRules?.dailyLimit ?? (typeof c.dailyLimit === 'number' ? c.dailyLimit : (monthly ? Math.round(monthly / 30) : null));
+  const intl = c.spendingRules?.internationalAllowed ?? (c.internationalAllowed ?? true);
+  const blocked = c.spendingRules?.blockedCategories ?? (c.blockedCategories ?? []);
+
+  return {
+    id: String(c.id),
+    walletId: c.walletId || 'w1',
+    tokenizedPan: pan,
+    cardholderName: c.cardholderName || c.cardholder_name || (authStore.user ? `${authStore.user.firstName} ${authStore.user.lastName}`.trim().toUpperCase() : 'TITULAR'),
+    expirationDate: exp,
+    status: c.status || 'ACTIVE',
+    spendingRules: {
+      dailyLimit: daily,
+      monthlyLimit: monthly,
+      internationalAllowed: intl,
+      blockedCategories: blocked,
+    },
+    issuedAt: c.issuedAt || c.createdAt || new Date().toISOString(),
+  };
+};
+
+// Computed Balances and Stats
+const totalBalance = computed(() => {
+  return accounts.value.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+});
+
+const isCredit = (m: AccountMovement) => ['DEPOSIT', 'TRANSFER_IN', 'INTEREST'].includes(m.type);
+
+const monthlyIncome = computed(() => {
+  return movements.value
+    .filter(m => isCredit(m))
+    .reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
+});
+
+const monthlyExpenses = computed(() => {
+  return movements.value
+    .filter(m => !isCredit(m))
+    .reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
+});
+
+const monthlyNetChange = computed(() => {
+  return monthlyIncome.value - monthlyExpenses.value;
+});
+
 const activeCards = computed(() => cards.value.filter(c => c.status === 'ACTIVE').length);
 const totalCards = computed(() => cards.value.length);
 
@@ -293,81 +354,167 @@ const currentDate = computed(() => {
   return new Intl.DateTimeFormat('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }).format(new Date());
 });
 
-// Spending categories (visual demo)
-const spendingCategories = [
-  { name: 'Restaurantes', icon: '🍔', pct: 38, color: '#f97316' },
-  { name: 'Entretenimiento', icon: '🎮', pct: 25, color: '#8b5cf6' },
-  { name: 'Viajes', icon: '✈️', pct: 20, color: '#00e5c0' },
-  { name: 'Supermercado', icon: '🛒', pct: 12, color: '#2563eb' },
-  { name: 'Otros', icon: '📦', pct: 5, color: '#6b7280' },
-];
+// Dynamic spending categories based on actual movements
+const dynamicSpendingCategories = computed(() => {
+  const expenseMovements = movements.value.filter(m => !isCredit(m));
+  if (expenseMovements.length === 0) return [];
+  const total = expenseMovements.reduce((sum, m) => sum + m.amount, 0);
+  if (total <= 0) return [];
 
-// Weekly activity
-const weeklyActivity = [
-  { day: 'Lun', pct: 45, today: false },
-  { day: 'Mar', pct: 72, today: false },
-  { day: 'Mié', pct: 30, today: false },
-  { day: 'Jue', pct: 85, today: false },
-  { day: 'Vie', pct: 60, today: false },
-  { day: 'Sáb', pct: 90, today: false },
-  { day: 'Hoy', pct: 55, today: true },
-];
+  const byType: Record<string, number> = {};
+  expenseMovements.forEach(m => {
+    const key = m.type === 'TRANSFER_OUT' ? 'Transferencias' : (m.type === 'WITHDRAWAL' ? 'Retiros' : 'Pagos');
+    byType[key] = (byType[key] || 0) + m.amount;
+  });
+
+  const colorMap: Record<string, { icon: string; color: string }> = {
+    'Transferencias': { icon: '⇄', color: '#8b5cf6' },
+    'Retiros': { icon: '🏧', color: '#f97316' },
+    'Pagos': { icon: '💳', color: '#00e5c0' },
+  };
+
+  return Object.entries(byType).map(([name, amount]) => {
+    const meta = colorMap[name] || { icon: '📦', color: '#6b7280' };
+    return {
+      name,
+      icon: meta.icon,
+      pct: Math.round((amount / total) * 100),
+      color: meta.color,
+    };
+  });
+});
+
+// Weekly activity computed from real movements
+const weeklyActivity = computed(() => {
+  const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const result = [];
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dayName = days[d.getDay()];
+    const dateStr = d.toISOString().slice(0, 10);
+    const dayTotal = movements.value
+      .filter(m => (m.createdAt || '').slice(0, 10) === dateStr)
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    result.push({
+      day: i === 0 ? 'Hoy' : dayName,
+      amount: dayTotal,
+      today: i === 0,
+      pct: 6,
+    });
+  }
+
+  const max = Math.max(...result.map(r => r.amount), 1);
+  return result.map(r => ({
+    ...r,
+    pct: r.amount > 0 ? Math.round((r.amount / max) * 90) + 10 : 6,
+  }));
+});
 
 // Helpers
 const formatAmount = (n: number) =>
-  n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  (n || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const formatDate = (iso: string) =>
-  new Intl.DateTimeFormat('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
-
-const txnTypeLabel = (type: string) => ({
-  DEPOSIT: 'Depósito', WITHDRAWAL: 'Retiro',
-  TRANSFER: 'Transferencia', CARD_PAYMENT: 'Pago con tarjeta',
-  CURRENCY_EXCHANGE: 'Cambio de divisa',
-}[type] ?? type);
-
-const statusLabel = (s: string) => ({
-  PENDING: 'Pendiente', COMPLETED: 'Completado',
-  FAILED: 'Fallido', REJECTED_BY_RULE: 'Rechazado',
-}[s] ?? s);
-
-const txnColor = (txn: Transaction) => {
-  if (txn.status === 'FAILED' || txn.status === 'REJECTED_BY_RULE') return 'red';
-  if (txn.type === 'DEPOSIT') return 'green';
-  return 'blue';
+const formatDate = (iso: string) => {
+  if (!iso) return '';
+  return new Intl.DateTimeFormat('es-CO', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
 };
 
-// Data fetch
-onMounted(async () => {
+const movementTypeLabel: Record<string, string> = {
+  DEPOSIT: 'Depósito',
+  WITHDRAWAL: 'Retiro',
+  TRANSFER_IN: 'Transferencia recibida',
+  TRANSFER_OUT: 'Transferencia enviada',
+  INTEREST: 'Intereses',
+};
+
+const statusLabel = (s: string) => ({
+  ACTIVE: 'Activa',
+  FROZEN: 'Congelada',
+  CANCELLED: 'Cancelada',
+}[s] ?? s);
+
+// Load data
+const loadDashboardData = async () => {
+  loading.value = true;
+  localStorage.removeItem('nova_cards_demo');
+  localStorage.removeItem('nova_custom_cards');
+
   try {
-    const [cardsRes, txnRes] = await Promise.allSettled([
-      api.get<VirtualCard[]>('/cards'),
-      api.get<Transaction[]>('/transactions'),
-    ]);
-    if (cardsRes.status === 'fulfilled') cards.value = cardsRes.value.data;
-    if (txnRes.status === 'fulfilled') transactions.value = txnRes.value.data;
-  } catch (_) {
-    // Silencioso: si el backend no responde, mostramos vacío
+    // 1. Fetch Accounts
+    const accList = await accountService.list().catch(() => []);
+    accounts.value = Array.isArray(accList) ? accList : [];
+
+    // 2. Fetch Movements for all accounts
+    if (accounts.value.length > 0) {
+      const allMovementsPromises = accounts.value.map(acc => accountService.movements(acc.id).catch(() => []));
+      const settled = await Promise.allSettled(allMovementsPromises);
+      const allMovs: AccountMovement[] = [];
+      settled.forEach(s => {
+        if (s.status === 'fulfilled' && Array.isArray(s.value)) {
+          allMovs.push(...s.value);
+        }
+      });
+      allMovs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      movements.value = allMovs;
+    } else {
+      movements.value = [];
+    }
+
+    // 3. Fetch Cards
+    try {
+      const cardsResp = await api.get<any[]>('/cards');
+      if (Array.isArray(cardsResp.data)) {
+        cards.value = cardsResp.data.map(normalizeCard);
+        const key = getCardsStorageKey();
+        if (key) {
+          try {
+            localStorage.setItem(key, JSON.stringify(cards.value));
+          } catch {
+            // silent
+          }
+        }
+      } else {
+        cards.value = [];
+      }
+    } catch {
+      // Fallback only if request failed (offline / demo fallback)
+      const key = getCardsStorageKey();
+      if (key) {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              cards.value = parsed.filter(c => !['c1', 'c2', 'c3', 'c4', '1', '2'].includes(c.id)).map(normalizeCard);
+            } else {
+              cards.value = [];
+            }
+          } catch {
+            cards.value = [];
+          }
+        } else {
+          cards.value = [];
+        }
+      } else {
+        cards.value = [];
+      }
+    }
+  } catch {
+    accounts.value = [];
+    movements.value = [];
+    cards.value = [];
   } finally {
-    // Demo data si está vacío
-    if (cards.value.length === 0) {
-      cards.value = [
-        { id: '1', walletId: 'w1', tokenizedPan: '**** **** **** 4231', expirationDate: '08/27', status: 'ACTIVE', spendingRules: { dailyLimit: 500, monthlyLimit: 3000, internationalAllowed: true, blockedCategories: [] }, issuedAt: new Date().toISOString() },
-        { id: '2', walletId: 'w1', tokenizedPan: '**** **** **** 9810', expirationDate: '03/26', status: 'FROZEN', spendingRules: { dailyLimit: null, monthlyLimit: null, internationalAllowed: false, blockedCategories: [] }, issuedAt: new Date().toISOString() },
-      ];
-    }
-    if (transactions.value.length === 0) {
-      transactions.value = [
-        { id: '1', walletId: 'w1', type: 'DEPOSIT', status: 'COMPLETED', amount: 1500, currency: 'USD', merchantName: 'Nómina Empresa', referenceCode: 'REF001', createdAt: new Date(Date.now() - 3600000).toISOString() },
-        { id: '2', walletId: 'w1', type: 'CARD_PAYMENT', status: 'COMPLETED', amount: 45.99, currency: 'USD', merchantName: 'Netflix', referenceCode: 'REF002', createdAt: new Date(Date.now() - 86400000).toISOString() },
-        { id: '3', walletId: 'w1', type: 'CARD_PAYMENT', status: 'COMPLETED', amount: 128.5, currency: 'USD', merchantName: 'Amazon', referenceCode: 'REF003', createdAt: new Date(Date.now() - 172800000).toISOString() },
-        { id: '4', walletId: 'w1', type: 'TRANSFER', status: 'COMPLETED', amount: 200, currency: 'USD', merchantName: 'Juan García', referenceCode: 'REF004', createdAt: new Date(Date.now() - 259200000).toISOString() },
-        { id: '5', walletId: 'w1', type: 'CARD_PAYMENT', status: 'REJECTED_BY_RULE', amount: 999, currency: 'USD', merchantName: 'Casino Online', referenceCode: 'REF005', createdAt: new Date(Date.now() - 345600000).toISOString() },
-        { id: '6', walletId: 'w1', type: 'WITHDRAWAL', status: 'COMPLETED', amount: 300, currency: 'USD', merchantName: undefined, referenceCode: 'REF006', createdAt: new Date(Date.now() - 432000000).toISOString() },
-      ];
-    }
     loading.value = false;
   }
+};
+
+onMounted(loadDashboardData);
+
+watch(() => authStore.user?.id, () => {
+  loadDashboardData();
 });
 </script>
 
@@ -675,7 +822,17 @@ onMounted(async () => {
   font-weight: 600;
   color: rgba(255,255,255,0.9);
   letter-spacing: 0.12em;
-  margin: 0.5rem 0;
+  margin: 0.5rem 0 0.2rem 0;
+}
+.vc-holder {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 0.5rem;
+  position: relative;
+  z-index: 3;
 }
 .vc-bottom {
   display: flex;
@@ -801,6 +958,15 @@ onMounted(async () => {
   border-radius: 20px;
   padding: 1.5rem;
   border: 1px solid rgba(255,255,255,0.06);
+}
+.empty-mini {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 0.85rem;
+  text-align: center;
 }
 .spending-list { display: flex; flex-direction: column; gap: 0.9rem; }
 .spending-item { display: flex; align-items: center; gap: 0.875rem; }

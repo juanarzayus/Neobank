@@ -66,4 +66,14 @@ export const VirtualCardController = {
     if (!rows[0]) throw new AppError(404, 'Tarjeta no encontrada');
     res.json(toCard(rows[0]));
   },
+
+  async delete(req: Request, res: Response) {
+    const { rowCount } = await pool.query(
+      'DELETE FROM virtual_cards WHERE id = $1 AND user_id = $2',
+      [req.params.id, res.locals.userId]
+    );
+    if (!rowCount) throw new AppError(404, 'Tarjeta no encontrada');
+    res.status(204).end();
+  },
 };
+
