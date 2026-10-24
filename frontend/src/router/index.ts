@@ -64,9 +64,13 @@ router.beforeEach(async (to, from, next) => {
     // Intentar renovar sesión desde cookie (solo aplica si hay backend real)
     try {
         await authStore.refreshSession();
-        next();
+        if (authStore.accessToken && authStore.user) {
+            return next();
+        }
+        return next('/login');
     } catch {
-        next('/login');
+        authStore.logout();
+        return next('/login');
     }
 });
 

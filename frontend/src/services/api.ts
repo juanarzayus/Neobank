@@ -20,6 +20,13 @@ api.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config;
+        const url = originalRequest?.url || '';
+        const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register') || url.includes('/auth/refresh') || url.includes('/auth/logout');
+
+        // Si da 401 en endpoints de autenticación, no intentar refrescar (evita revivir sesiones anteriores ante credenciales inválidas)
+        if (isAuthEndpoint) {
+            return Promise.reject(error);
+        }
 
         // Si da 401 y no hemos reintentado ya...
         if (error.response?.status === 401 && !originalRequest._retry) {
