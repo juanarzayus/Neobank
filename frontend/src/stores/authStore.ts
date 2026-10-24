@@ -29,22 +29,6 @@ const applyCustomUserData = (baseUser: UserProfile): UserProfile => {
     return baseUser;
 };
 
-<<<<<<< Updated upstream
-=======
-const applyCustomUserData = (baseUser: UserProfile): UserProfile => {
-    try {
-        const raw = localStorage.getItem('nova_user_profile_' + baseUser.id);
-        if (raw) {
-            const custom = JSON.parse(raw);
-            return { ...baseUser, ...custom };
-        }
-    } catch {
-        // ignore json parse error
-    }
-    return baseUser;
-};
-
->>>>>>> Stashed changes
 export const useAuthStore = defineStore('auth', () => {
     const user = ref<UserProfile | null>(null);
     const accessToken = ref<string | null>(null);
@@ -124,33 +108,7 @@ export const useAuthStore = defineStore('auth', () => {
             // ignore
         }
     };
-
-<<<<<<< Updated upstream
-    const logout = () => {
-=======
-    const updateProfile = (data: { preferredName?: string; email?: string; address?: string }) => {
-        if (!user.value) return;
-        user.value = {
-            ...user.value,
-            ...(data.preferredName !== undefined ? { preferredName: data.preferredName } : {}),
-            ...(data.email !== undefined && data.email ? { email: data.email } : {}),
-            ...(data.address !== undefined ? { address: data.address } : {}),
-        };
-        try {
-            const custom = {
-                preferredName: user.value.preferredName,
-                email: user.value.email,
-                address: user.value.address,
-            };
-            localStorage.setItem('nova_user_profile_' + user.value.id, JSON.stringify(custom));
-            localStorage.removeItem('nova_user_profile');
-        } catch {
-            // ignore
-        }
-    };
-
     const logout = async () => {
->>>>>>> Stashed changes
         user.value = null;
         accessToken.value = null;
         isDemo.value = false;
