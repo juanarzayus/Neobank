@@ -5,7 +5,7 @@
     <section class="dashboard__greeting">
       <div class="greeting__text">
         <p class="greeting__sub">{{ greetingLabel }}, 👋</p>
-        <h1 class="greeting__name">{{ authStore.user?.firstName }} {{ authStore.user?.lastName }}</h1>
+        <h1 class="greeting__name">{{ authStore.user?.preferredName || `${authStore.user?.firstName ?? ''} ${authStore.user?.lastName ?? ''}`.trim() || 'Usuario' }}</h1>
         <p class="greeting__date">{{ currentDate }}</p>
       </div>
       <router-link to="/cards" class="greeting__cta">
