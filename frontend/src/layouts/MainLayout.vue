@@ -301,64 +301,9 @@ const saveProfile = () => {
   }, 900);
 };
 
-<<<<<<< Updated upstream
-const handleLogout = () => {
-  closeProfileMenu();
-  authStore.logout();
-=======
-// Dropdown de perfil
-const profileMenuOpen = ref(false);
-const profileMenuRef = ref<HTMLElement | null>(null);
-
-const toggleProfileMenu = () => {
-  profileMenuOpen.value = !profileMenuOpen.value;
-};
-
-const closeProfileMenu = () => {
-  profileMenuOpen.value = false;
-};
-
-// Modal "Mis datos"
-const profileModalOpen = ref(false);
-const profileSuccessMsg = ref('');
-const profileForm = ref({
-  preferredName: '',
-  email: '',
-  address: '',
-});
-
-const openProfileModal = () => {
-  closeProfileMenu();
-  profileSuccessMsg.value = '';
-  profileForm.value = {
-    preferredName: authStore.user?.preferredName || authStore.user?.firstName || '',
-    email: authStore.user?.email || '',
-    address: authStore.user?.address || '',
-  };
-  profileModalOpen.value = true;
-};
-
-const closeProfileModal = () => {
-  profileModalOpen.value = false;
-};
-
-const saveProfile = () => {
-  authStore.updateProfile({
-    preferredName: profileForm.value.preferredName.trim(),
-    email: profileForm.value.email.trim(),
-    address: profileForm.value.address.trim(),
-  });
-  profileSuccessMsg.value = '¡Datos actualizados correctamente!';
-  setTimeout(() => {
-    profileModalOpen.value = false;
-    profileSuccessMsg.value = '';
-  }, 900);
-};
-
 const handleLogout = async () => {
   closeProfileMenu();
   await authStore.logout();
->>>>>>> Stashed changes
   router.push('/login');
 };
 
