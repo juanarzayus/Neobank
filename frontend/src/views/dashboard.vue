@@ -157,7 +157,7 @@
               <div class="vc-info">
                 <span class="vc-info__label">Límite mensual</span>
                 <span class="vc-info__value">
-                  {{ card.spendingRules?.monthlyLimit ? '$' + card.spendingRules.monthlyLimit.toLocaleString() : (card.spendingRules?.dailyLimit ? '$' + card.spendingRules.dailyLimit.toLocaleString() + '/d' : 'Sin límite') }}
+                  {{ card.spendingRules?.monthlyLimit ? '$' + card.spendingRules.monthlyLimit.toLocaleString(numberLocale) : (card.spendingRules?.dailyLimit ? '$' + card.spendingRules.dailyLimit.toLocaleString(numberLocale) + '/d' : 'Sin límite') }}
                 </span>
               </div>
               <div class="vc-chip">
@@ -275,6 +275,7 @@ import type { Account, AccountMovement } from '@/types/accounts';
 import { api } from '@/services/api';
 import { accountService } from '@/services/accountService';
 import logo from '@/assets/LOGONOVA.png';
+import { numberLocale, formatAmount } from '@/utils/numberFormat';
 
 const authStore = useAuthStore();
 const getCardsStorageKey = () => {
@@ -414,8 +415,8 @@ const weeklyActivity = computed(() => {
 });
 
 // Helpers
-const formatAmount = (n: number) =>
-  (n || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// Helpers (formatAmount imported from @/utils/numberFormat)
+
 
 const formatDate = (iso: string) => {
   if (!iso) return '';

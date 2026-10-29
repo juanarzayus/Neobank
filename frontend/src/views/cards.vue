@@ -137,7 +137,7 @@
               <div class="vcard__field">
                 <span class="vcard__field-label">Límite mensual</span>
                 <span class="vcard__field-value">
-                  {{ card.spendingRules.monthlyLimit ? '$' + card.spendingRules.monthlyLimit.toLocaleString() : (card.spendingRules.dailyLimit ? '$' + card.spendingRules.dailyLimit.toLocaleString() + '/d' : 'Sin límite') }}
+                  {{ card.spendingRules.monthlyLimit ? '$' + card.spendingRules.monthlyLimit.toLocaleString(numberLocale) : (card.spendingRules.dailyLimit ? '$' + card.spendingRules.dailyLimit.toLocaleString(numberLocale) + '/d' : 'Sin límite') }}
                 </span>
               </div>
               <div class="vcard__chip">
@@ -259,13 +259,13 @@
               <div class="rule-item">
                 <span class="rule-item__label">Límite diario</span>
                 <span class="rule-item__value">
-                  {{ selectedCard.spendingRules.dailyLimit ? '$' + selectedCard.spendingRules.dailyLimit.toLocaleString() : 'Sin límite' }}
+                  {{ selectedCard.spendingRules.dailyLimit ? '$' + selectedCard.spendingRules.dailyLimit.toLocaleString(numberLocale) : 'Sin límite' }}
                 </span>
               </div>
               <div class="rule-item">
                 <span class="rule-item__label">Límite mensual</span>
                 <span class="rule-item__value">
-                  {{ selectedCard.spendingRules.monthlyLimit ? '$' + selectedCard.spendingRules.monthlyLimit.toLocaleString() : 'Sin límite' }}
+                  {{ selectedCard.spendingRules.monthlyLimit ? '$' + selectedCard.spendingRules.monthlyLimit.toLocaleString(numberLocale) : 'Sin límite' }}
                 </span>
               </div>
               <div class="rule-item">
@@ -370,11 +370,11 @@
             </div>
             <div class="form-group">
               <label class="form-label" for="issue-monthly">Límite mensual (USD)</label>
-              <input id="issue-monthly" v-model.number="issueForm.monthlyLimit" type="number" class="form-input" placeholder="Ej: 3000" min="0" />
+              <input id="issue-monthly" :value="issueForm.monthlyLimit" @input="issueForm.monthlyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Ej: 3,000.00" />
             </div>
             <div class="form-group">
               <label class="form-label" for="issue-daily">Límite diario (USD, opcional)</label>
-              <input id="issue-daily" v-model.number="issueForm.dailyLimit" type="number" class="form-input" placeholder="Ej: 500" min="0" />
+              <input id="issue-daily" :value="issueForm.dailyLimit" @input="issueForm.dailyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Ej: 500.00" />
             </div>
             <div class="form-group">
               <label class="form-label">Compras internacionales</label>
@@ -435,11 +435,11 @@
           <form @submit.prevent="saveLimits" class="modal-form">
             <div class="form-group">
               <label class="form-label" for="limit-daily">Límite diario (USD)</label>
-              <input id="limit-daily" v-model.number="limitsForm.dailyLimit" type="number" class="form-input" placeholder="Sin límite si vacío" min="0" />
+              <input id="limit-daily" :value="limitsForm.dailyLimit" @input="limitsForm.dailyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Sin límite si vacío" />
             </div>
             <div class="form-group">
               <label class="form-label" for="limit-monthly">Límite mensual (USD)</label>
-              <input id="limit-monthly" v-model.number="limitsForm.monthlyLimit" type="number" class="form-input" placeholder="Sin límite si vacío" min="0" />
+              <input id="limit-monthly" :value="limitsForm.monthlyLimit" @input="limitsForm.monthlyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Sin límite si vacío" />
             </div>
             <div class="form-group">
               <label class="form-label">Compras internacionales</label>
@@ -519,12 +519,14 @@
               <label class="form-label" for="sim-amount">Monto (USD) *</label>
               <input
                 id="sim-amount"
-                v-model.number="simulateForm.amount"
-                type="number"
+                :value="simulateForm.amount"
+                @input="simulateForm.amount = onMoneyInput($event)"
+                type="text"
+                inputmode="decimal"
                 class="form-input"
-                placeholder="Ej: 200"
-                min="0.01"
-                step="0.01"
+                placeholder="Ej: 200.00"
+
+
                 required
               />
             </div>
@@ -568,6 +570,9 @@ import type { Transaction } from '@/types/transactions';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/authStore';
 import logo from '@/assets/LOGONOVA.png';
+import { accountService } from '@/services/accountService';
+import { numberLocale, formatAmount, formatMoneyInput, parseMoney } from '@/utils/numberFormat';
+import { pushNotification } from '@/utils/notifications';
 
 const authStore = useAuthStore();
 
@@ -628,6 +633,21 @@ const persistCards = () => {
   }
 };
 
+const getTxnsStorageKey = () => {
+  const uid = authStore.user?.id;
+  return uid ? `nova_card_txns_${uid}` : null;
+};
+
+const persistTransactions = () => {
+  const key = getTxnsStorageKey();
+  if (!key) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(transactions.value));
+  } catch {
+    // silent
+  }
+};
+
 // Computed
 const filteredCards = computed(() => {
   if (activeFilter.value === 'ALL') return cards.value;
@@ -645,7 +665,7 @@ const monthlySpend = computed(() => {
 const cardTransactions = computed(() => {
   if (!selectedCard.value) return [];
   return transactions.value
-    .filter(t => t.cardId === selectedCard.value!.id || (t.type === 'CARD_PAYMENT'))
+    .filter(t => String(t.cardId) === String(selectedCard.value!.id))
     .slice(0, 5);
 });
 
@@ -656,8 +676,8 @@ const issueSuccessMsg = ref('');
 const issueErrorMsg = ref('');
 const issueForm = reactive({
   cardholderName: '',
-  dailyLimit: null as number | null,
-  monthlyLimit: null as number | null,
+  dailyLimit: '' as string | number | null,
+  monthlyLimit: '' as string | number | null,
   internationalAllowed: true,
   blockedCategories: [] as MerchantCategory[],
 });
@@ -668,8 +688,8 @@ const limitsSuccessMsg = ref('');
 const limitsForm = reactive({
   cardId: '',
   pan: '',
-  dailyLimit: null as number | null,
-  monthlyLimit: null as number | null,
+  dailyLimit: '' as string | number | null,
+  monthlyLimit: '' as string | number | null,
   internationalAllowed: true,
   blockedCategories: [] as MerchantCategory[],
 });
@@ -681,13 +701,16 @@ const simulating = ref(false);
 const simulateResult = ref<{ approved: boolean; reason: string; newBalance?: number } | null>(null);
 const simulateForm = reactive({
   merchantName: '',
-  amount: null as number | null,
+  amount: '' as string | number | null,
   isInternational: false,
 });
 
 // Helpers
-const formatAmount = (n: number) =>
-  n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const onMoneyInput = (e: Event): string => {
+  const el = e.target as HTMLInputElement;
+  return (el.value = formatMoneyInput(el.value));
+};
+
 
 const formatDate = (iso: string) => {
   if (!iso) return '';
@@ -736,8 +759,8 @@ const issueCard = async () => {
   issueSuccessMsg.value = '';
 
   const holder = issueForm.cardholderName.trim().toUpperCase();
-  const mLimit = typeof issueForm.monthlyLimit === 'number' && issueForm.monthlyLimit >= 0 ? issueForm.monthlyLimit : 0;
-  const dLimit = issueForm.dailyLimit || null;
+  const mLimit = parseMoney(issueForm.monthlyLimit) ?? 0;
+  const dLimit = parseMoney(issueForm.dailyLimit);
 
   try {
     const resp = await api.post<any>('/cards', {
@@ -752,6 +775,11 @@ const issueCard = async () => {
     selectedCard.value = createdCard;
     persistCards();
     issueSuccessMsg.value = '¡Tarjeta emitida exitosamente!';
+    pushNotification({
+      title: 'Tarjeta virtual emitida',
+      message: `Se emitió tu nueva tarjeta terminada en ${selectedCard.value?.tokenizedPan.slice(-4)}.`,
+      type: 'success',
+    });
     setTimeout(() => { issueModalOpen.value = false; }, 1200);
   } catch {
     // Local creation fallback (works offline or without backend)
@@ -780,6 +808,11 @@ const issueCard = async () => {
     selectedCard.value = newCard;
     persistCards();
     issueSuccessMsg.value = '¡Tarjeta emitida exitosamente!';
+    pushNotification({
+      title: 'Tarjeta virtual emitida',
+      message: `Se emitió tu nueva tarjeta terminada en ${selectedCard.value?.tokenizedPan.slice(-4)}.`,
+      type: 'success',
+    });
     setTimeout(() => { issueModalOpen.value = false; }, 1200);
   } finally {
     issuing.value = false;
@@ -794,6 +827,11 @@ const toggleFreeze = async (card: VirtualCard) => {
     // fallback
   }
   card.status = newStatus;
+  pushNotification({
+    title: newStatus === 'FROZEN' ? 'Tarjeta congelada' : 'Tarjeta descongelada',
+    message: `La tarjeta terminada en ${card.tokenizedPan.slice(-4)} ahora está ${newStatus === 'FROZEN' ? 'congelada' : 'activa'}.`,
+    type: newStatus === 'FROZEN' ? 'warning' : 'info',
+  });
   persistCards();
 };
 
@@ -805,6 +843,11 @@ const cancelCard = async (card: VirtualCard) => {
     // fallback
   }
   card.status = 'CANCELLED';
+  pushNotification({
+    title: 'Tarjeta cancelada',
+    message: `Cancelaste permanentemente la tarjeta terminada en ${card.tokenizedPan.slice(-4)}.`,
+    type: 'warning',
+  });
   persistCards();
 };
 
@@ -816,6 +859,11 @@ const deleteCard = async (card: VirtualCard) => {
     // fallback si es tarjeta local u offline
   }
   cards.value = cards.value.filter(c => c.id !== card.id);
+  pushNotification({
+    title: 'Tarjeta eliminada',
+    message: `Eliminaste la tarjeta terminada en ${card.tokenizedPan.slice(-4)}.`,
+    type: 'danger',
+  });
   if (selectedCard.value?.id === card.id) {
     selectedCard.value = cards.value[0] || null;
   }
@@ -826,8 +874,8 @@ const openLimitsModal = (card: VirtualCard) => {
   limitsSuccessMsg.value = '';
   limitsForm.cardId = card.id;
   limitsForm.pan = card.tokenizedPan;
-  limitsForm.dailyLimit = card.spendingRules.dailyLimit;
-  limitsForm.monthlyLimit = card.spendingRules.monthlyLimit;
+  limitsForm.dailyLimit = formatMoneyInput(card.spendingRules.dailyLimit);
+  limitsForm.monthlyLimit = formatMoneyInput(card.spendingRules.monthlyLimit);
   limitsForm.internationalAllowed = card.spendingRules.internationalAllowed;
   limitsForm.blockedCategories = [...card.spendingRules.blockedCategories];
   limitsModalOpen.value = true;
@@ -837,8 +885,8 @@ const saveLimits = async () => {
   const card = cards.value.find(c => c.id === limitsForm.cardId);
   if (!card) return;
   const newRules = {
-    dailyLimit: limitsForm.dailyLimit || null,
-    monthlyLimit: limitsForm.monthlyLimit || null,
+    dailyLimit: parseMoney(limitsForm.dailyLimit),
+    monthlyLimit: parseMoney(limitsForm.monthlyLimit),
     internationalAllowed: limitsForm.internationalAllowed,
     blockedCategories: [...limitsForm.blockedCategories],
   };
@@ -862,6 +910,11 @@ const saveLimits = async () => {
   }
   persistCards();
   limitsSuccessMsg.value = '¡Límites actualizados!';
+  pushNotification({
+    title: 'Límites actualizados',
+    message: `Se actualizaron las reglas de gasto de la tarjeta terminada en ${card.tokenizedPan.slice(-4)}.`,
+    type: 'info',
+  });
   setTimeout(() => { limitsModalOpen.value = false; }, 900);
 };
 
@@ -870,7 +923,7 @@ const openSimulateModal = (card: VirtualCard) => {
   simulateCard.value = card;
   simulateResult.value = null;
   simulateForm.merchantName = '';
-  simulateForm.amount = null;
+  simulateForm.amount = '';
   simulateForm.isInternational = false;
   simulateModalOpen.value = true;
 };
@@ -882,15 +935,29 @@ const closeSimulateModal = () => {
 };
 
 const submitSimulate = async () => {
-  if (!simulateCard.value || !simulateForm.amount || !simulateForm.merchantName.trim()) return;
+  const parsedAmount = parseMoney(simulateForm.amount);
+  if (!simulateCard.value || !parsedAmount || !simulateForm.merchantName.trim()) return;
   simulating.value = true;
   try {
     const res = await api.post<any>(`/cards/${simulateCard.value.id}/authorize`, {
-      amount: simulateForm.amount,
+      amount: parsedAmount,
       merchantName: simulateForm.merchantName.trim(),
       isInternational: simulateForm.isInternational,
     });
     simulateResult.value = res.data;
+    if (res.data.approved) {
+      pushNotification({
+        title: 'Pago exitoso',
+        message: `Compra aprobada en ${res.data.merchantName || simulateForm.merchantName.trim()} por $${formatAmount(parsedAmount)} (Tarjeta ${simulateCard.value.tokenizedPan.slice(-4)}).`,
+        type: 'success',
+      });
+    } else {
+      pushNotification({
+        title: 'Compra rechazada',
+        message: `Pago en ${simulateForm.merchantName.trim()} por $${formatAmount(parsedAmount)} rechazado: ${res.data.reason}.`,
+        type: 'danger',
+      });
+    }
     // Update card in list if approved
     if (res.data.approved && res.data.card) {
       const idx = cards.value.findIndex(c => c.id === simulateCard.value!.id);
@@ -925,6 +992,57 @@ const submitSimulate = async () => {
   }
 };
 
+watch(transactions, persistTransactions, { deep: true });
+
+// Load card transactions from account movements + local storage
+const loadCardTransactions = async (): Promise<Transaction[]> => {
+  const fromBackend: Transaction[] = [];
+  try {
+    const accs = await accountService.list();
+    const movLists = await Promise.all(accs.map(a => accountService.movements(a.id).catch(() => [])));
+    for (const list of movLists) {
+      for (const m of list) {
+        const match = m.description?.match(/^Pago:\s*(.+?)\s*\[([^\]]+)\]$/);
+        if (match) {
+          fromBackend.push({
+            id: String(m.id),
+            walletId: 'w1',
+            cardId: String(match[2]),
+            type: 'CARD_PAYMENT',
+            status: 'COMPLETED',
+            amount: Number(m.amount),
+            currency: 'USD',
+            merchantName: match[1].trim(),
+            referenceCode: 'CARD-' + String(m.id).slice(0, 6).toUpperCase(),
+            createdAt: m.createdAt,
+          });
+        }
+      }
+    }
+  } catch {
+    // ignore backend error, fallback to local storage below
+  }
+
+  if (fromBackend.length > 0) {
+    fromBackend.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return fromBackend;
+  }
+
+  const key = getTxnsStorageKey();
+  if (key) {
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // silent
+    }
+  }
+  return [];
+};
+
 // Data fetch logic
 const fetchCardsData = async () => {
   loading.value = true;
@@ -935,7 +1053,7 @@ const fetchCardsData = async () => {
   try {
     const [cardsRes, txnRes] = await Promise.allSettled([
       api.get<any[]>('/cards'),
-      api.get<Transaction[]>('/transactions'),
+      loadCardTransactions(),
     ]);
 
     if (cardsRes.status === 'fulfilled' && Array.isArray(cardsRes.value.data)) {
@@ -967,8 +1085,10 @@ const fetchCardsData = async () => {
       }
     }
 
-    if (txnRes.status === 'fulfilled' && Array.isArray(txnRes.value.data)) {
-      transactions.value = txnRes.value.data;
+    if (txnRes.status === 'fulfilled' && Array.isArray(txnRes.value)) {
+      transactions.value = txnRes.value;
+      persistTransactions();
+
     } else {
       transactions.value = [];
     }

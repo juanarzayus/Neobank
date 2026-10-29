@@ -114,7 +114,7 @@
           </label>
           <label class="field">
             <span>Monto (COP)</span>
-            <input id="field-amount" v-model="form.amount" type="number" min="0.01" step="0.01" inputmode="decimal" required autofocus />
+            <input id="field-amount" :value="form.amount" @input="form.amount = onMoneyInput($event)" type="text" inputmode="decimal" placeholder="Ej: 1,500.00" required autofocus />
           </label>
           <p v-if="modal.account && modal.kind !== 'deposit'" class="hint">
             Disponible: {{ money(modal.account.balance) }}
@@ -138,6 +138,13 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { accountService } from '@/services/accountService';
 import type { Account, AccountMovement, AccountMovementType } from '@/types/accounts';
+import { formatAmount, formatMoneyInput, parseMoney } from '@/utils/numberFormat';
+import { pushNotification } from '@/utils/notifications';
+
+const onMoneyInput = (e: Event): string => {
+  const el = e.target as HTMLInputElement;
+  return (el.value = formatMoneyInput(el.value));
+};
 
 type ModalKind = 'create' | 'deposit' | 'withdraw' | 'transfer';
 
@@ -163,7 +170,7 @@ const typeLabel: Record<AccountMovementType, string> = {
 };
 
 const money = (value: number) =>
-  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 2 }).format(value);
+  '$' + formatAmount(value);
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
@@ -252,12 +259,27 @@ async function submitModal() {
       const created = await accountService.createSavings(form.name || undefined);
       selectedId.value = created.id;
       flash('Cuenta de ahorros creada');
+      pushNotification({
+        title: 'Nueva cuenta de ahorros',
+        message: `Se creó la cuenta «${created.name}» exitosamente.`,
+        type: 'success',
+      });
     } else {
-      const amount = Number(form.amount);
+      const amount = parseMoney(form.amount) ?? NaN;
       if (!Number.isFinite(amount) || amount <= 0) throw { response: { data: { message: 'Ingresa un monto válido' } } };
-      if (kind === 'deposit') await accountService.deposit(account!.id, amount);
-      if (kind === 'withdraw') await accountService.withdraw(account!.id, amount);
-      if (kind === 'transfer') await accountService.transfer(account!.id, form.targetId, amount);
+      if (kind === 'deposit') {
+        await accountService.deposit(account!.id, amount);
+        pushNotification({ title: 'Depósito exitoso', message: `Ingresaste ${money(amount)} en «${account!.name}».`, type: 'success' });
+      }
+      if (kind === 'withdraw') {
+        await accountService.withdraw(account!.id, amount);
+        pushNotification({ title: 'Retiro exitoso', message: `Retiraste ${money(amount)} de «${account!.name}».`, type: 'info' });
+      }
+      if (kind === 'transfer') {
+        const destName = accounts.value.find(a => a.id === form.targetId)?.name ?? 'otra cuenta';
+        await accountService.transfer(account!.id, form.targetId, amount);
+        pushNotification({ title: 'Transferencia exitosa', message: `Transferiste ${money(amount)} de «${account!.name}» a «${destName}».`, type: 'success' });
+      }
       flash('Operación realizada');
     }
     closeModal();
@@ -274,6 +296,11 @@ async function claimInterest(acc: Account) {
   try {
     const { interest } = await accountService.creditInterest(acc.id);
     flash(`Se acreditaron ${money(interest)} de intereses`);
+    pushNotification({
+      title: 'Intereses acreditados',
+      message: `Se abonaron ${money(interest)} de intereses mensuales en «${acc.name}».`,
+      type: 'success',
+    });
     selectedId.value = acc.id;
     await refresh();
   } catch (e) {

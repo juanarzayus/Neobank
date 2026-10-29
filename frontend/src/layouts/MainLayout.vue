@@ -76,6 +76,7 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" />
             </svg>
+
           </button>
           <div class="topbar__breadcrumb">
             <span class="topbar__route">{{ currentRouteName }}</span>
@@ -83,12 +84,142 @@
         </div>
 
         <div class="topbar__right">
-          <button class="topbar__icon-btn" title="Notificaciones">
+          <!-- Selector de formato numérico (es-CO / en-US) -->
+          <div class="locale-switcher">
+            <div
+              class="locale-switcher__option-wrap"
+              @mouseenter="hoveredLocale = 'es-CO'"
+              @mouseleave="hoveredLocale = null"
+            >
+              <button
+                type="button"
+                class="locale-switcher__btn"
+                :class="{ 'locale-switcher__btn--active': numberLocale === 'es-CO' }"
+                @click="setNumberLocale('es-CO')"
+              >
+                es-CO
+              </button>
+    
+              <transition name="dropdown-fade">
+                <div v-if="hoveredLocale === 'es-CO'" class="locale-popover">
+                  <p class="locale-popover__title">Formato numérico es-CO</p>
+                  <p class="locale-popover__desc">
+                    Cambia la visualización y escritura de valores en toda la plataforma a formato colombiano:
+                  </p>
+                  <ul class="locale-popover__list">
+                    <li><strong>Miles:</strong> separados con punto (<code>.</code>)</li>
+                    <li><strong>Decimales:</strong> separados con coma (<code>,</code>)</li>
+                  </ul>
+                  <div class="locale-popover__example">Ejemplo: <span>$1.500,50</span></div>
+                </div>
+              </transition>
+            </div>
+
+            <div
+              class="locale-switcher__option-wrap"
+              @mouseenter="hoveredLocale = 'en-US'"
+              @mouseleave="hoveredLocale = null"
+            >
+              <button
+                type="button"
+                class="locale-switcher__btn"
+                :class="{ 'locale-switcher__btn--active': numberLocale === 'en-US' }"
+                @click="setNumberLocale('en-US')"
+              >
+                en-US
+              </button>
+    
+              <transition name="dropdown-fade">
+                <div v-if="hoveredLocale === 'en-US'" class="locale-popover">
+                  <p class="locale-popover__title">Formato numérico en-US</p>
+                  <p class="locale-popover__desc">
+                    Cambia la visualización y escritura de valores en toda la plataforma a formato estadounidense:
+                  </p>
+                  <ul class="locale-popover__list">
+                    <li><strong>Miles:</strong> separados con coma (<code>,</code>)</li>
+                    <li><strong>Decimales:</strong> separados con punto (<code>.</code>)</li>
+                  </ul>
+                  <div class="locale-popover__example">Ejemplo: <span>$1,500.50</span></div>
+                </div>
+              </transition>
+            </div>
+          </div>
+
+          <!-- Campana de Notificaciones con Desplegable -->
+          <div class="notif-menu" ref="notifMenuRef">
+            <button
+              class="topbar__icon-btn"
+              title="Notificaciones"
+              @click.stop="toggleNotifMenu"
+              :aria-expanded="notifMenuOpen"
+            >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
               <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" stroke-linecap="round" />
             </svg>
-            <span class="topbar__badge">2</span>
-          </button>
+              <span v-if="unreadCount > 0" class="topbar__badge">{{ unreadCount > 9 ? '9+' : unreadCount }}</span>
+            </button>
+  
+
+            <transition name="dropdown-fade">
+              <div v-if="notifMenuOpen" class="notif-dropdown">
+                <div class="notif-dropdown__header">
+                  <span class="notif-dropdown__title">Notificaciones</span>
+                  <div class="notif-dropdown__actions" v-if="notifications.length > 0">
+                    <button
+                      v-if="unreadCount > 0"
+                      type="button"
+                      class="notif-dropdown__action"
+                      @click="markAllAsRead"
+                    >
+                      Marcar leídas
+                    </button>
+          
+                    <button
+                      type="button"
+                      class="notif-dropdown__action notif-dropdown__action--clear"
+                      @click="clearNotifications"
+                    >
+                      Limpiar
+                    </button>
+          
+                  </div>
+                </div>
+
+                <div class="profile-dropdown__divider"></div>
+
+                <div v-if="notifications.length === 0" class="notif-dropdown__empty">
+                  <span>🔔</span>
+                  <p>No tienes notificaciones recientes</p>
+                </div>
+
+                <ul v-else class="notif-list">
+                  <li
+                    v-for="n in notifications"
+                    :key="n.id"
+                    class="notif-item"
+                    :class="[`notif-item--${n.type}`, { 'notif-item--unread': !n.read }]"
+                    @click="markAsRead(n.id)"
+                  >
+                    <div class="notif-item__icon">
+                      <span v-if="n.type === 'success'">✓</span>
+                      <span v-else-if="n.type === 'danger'">✕</span>
+                      <span v-else-if="n.type === 'warning'">!</span>
+                      <span v-else>i</span>
+                    </div>
+                    <div class="notif-item__body">
+                      <div class="notif-item__top">
+                        <strong class="notif-item__title">{{ n.title }}</strong>
+                        <span class="notif-item__time">{{ formatNotifTime(n.createdAt) }}</span>
+                      </div>
+                      <p class="notif-item__msg">{{ n.message }}</p>
+                    </div>
+                    <span v-if="!n.read" class="notif-item__dot"></span>
+                  </li>
+                </ul>
+              </div>
+            </transition>
+          </div>
+
 
           <!-- Avatar con Menú Desplegable -->
           <div class="profile-menu" ref="profileMenuRef">
@@ -100,6 +231,7 @@
             >
               <div class="topbar__avatar">{{ userInitials }}</div>
             </button>
+  
 
             <!-- Menú Desplegable flotante -->
             <transition name="dropdown-fade">
@@ -116,6 +248,7 @@
                   </svg>
                   <span>Mis datos</span>
                 </button>
+      
                 <button class="profile-dropdown__item profile-dropdown__item--danger" @click="handleLogout">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
                     <path d="M17 16l4-4m0 0l-4-4m4 4H7" stroke-linecap="round" stroke-linejoin="round" />
@@ -123,6 +256,7 @@
                   </svg>
                   <span>Cerrar sesión</span>
                 </button>
+      
               </div>
             </transition>
           </div>
@@ -157,6 +291,9 @@
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
+            <svg v-if="false">
+              </svg>
+  
           </div>
 
           <form @submit.prevent="saveProfile" class="modal-form">
@@ -207,9 +344,11 @@
               <button type="button" class="btn btn--secondary" @click="closeProfileModal">
                 Cancelar
               </button>
+    
               <button type="submit" class="btn btn--primary">
                 Guardar cambios
               </button>
+    
             </div>
           </form>
         </div>
@@ -219,10 +358,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useAuthStore } from '@/stores/authStore';
 import { useRouter, useRoute } from 'vue-router';
 import logo from '@/assets/LOGONOVA.png';
+import { numberLocale, setNumberLocale } from '@/utils/numberFormat';
+import {
+  notifications,
+  unreadCount,
+  loadUserNotifications,
+  markAsRead,
+  markAllAsRead,
+  clearNotifications,
+  pushNotification,
+} from '@/utils/notifications';
+
+const hoveredLocale = ref<'es-CO' | 'en-US' | null>(null);
 
 const authStore = useAuthStore();
 const router = useRouter();
@@ -252,12 +403,36 @@ const userInitials = computed(() => {
   return (f + l).toUpperCase() || 'U';
 });
 
+// Dropdown de notificaciones
+const notifMenuOpen = ref(false);
+const notifMenuRef = ref<HTMLElement | null>(null);
+
+const toggleNotifMenu = () => {
+  notifMenuOpen.value = !notifMenuOpen.value;
+  if (notifMenuOpen.value) profileMenuOpen.value = false;
+};
+
+const closeNotifMenu = () => {
+  notifMenuOpen.value = false;
+};
+
+const formatNotifTime = (iso: string) => {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('es-CO', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 // Dropdown de perfil
 const profileMenuOpen = ref(false);
 const profileMenuRef = ref<HTMLElement | null>(null);
 
 const toggleProfileMenu = () => {
   profileMenuOpen.value = !profileMenuOpen.value;
+  if (profileMenuOpen.value) notifMenuOpen.value = false;
 };
 
 const closeProfileMenu = () => {
@@ -295,6 +470,11 @@ const saveProfile = () => {
     address: profileForm.value.address.trim(),
   });
   profileSuccessMsg.value = '¡Datos actualizados correctamente!';
+  pushNotification({
+    title: 'Perfil actualizado',
+    message: 'Tus datos personales fueron actualizados correctamente.',
+    type: 'info',
+  });
   setTimeout(() => {
     profileModalOpen.value = false;
     profileSuccessMsg.value = '';
@@ -308,6 +488,9 @@ const handleLogout = async () => {
 };
 
 const handleClickOutside = (event: MouseEvent) => {
+  if (notifMenuRef.value && !notifMenuRef.value.contains(event.target as Node)) {
+    closeNotifMenu();
+  }
   if (profileMenuRef.value && !profileMenuRef.value.contains(event.target as Node)) {
     closeProfileMenu();
   }
@@ -316,11 +499,13 @@ const handleClickOutside = (event: MouseEvent) => {
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
     closeProfileMenu();
+    closeNotifMenu();
     closeProfileModal();
   }
 };
 
 onMounted(() => {
+  loadUserNotifications(authStore.user?.id);
   window.addEventListener('click', handleClickOutside);
   window.addEventListener('keydown', handleKeyDown);
 });
@@ -328,6 +513,9 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('click', handleClickOutside);
   window.removeEventListener('keydown', handleKeyDown);
+});
+watch(() => authStore.user?.id, (uid) => {
+  loadUserNotifications(uid);
 });
 </script>
 
@@ -579,6 +767,246 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Locale switcher & popover */
+.locale-switcher {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 2px;
+  gap: 2px;
+}
+.locale-switcher__option-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.locale-switcher__btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.35rem 0.6rem;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.locale-switcher__btn:hover {
+  color: #fff;
+}
+.locale-switcher__btn--active {
+  background: rgba(0, 229, 192, 0.16);
+  color: #00e5c0;
+  box-shadow: inset 0 0 0 1px rgba(0, 229, 192, 0.3);
+}
+.locale-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 245px;
+  background: #0e1726;
+  border: 1px solid rgba(0, 229, 192, 0.28);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.65), 0 0 18px rgba(0, 229, 192, 0.1);
+  z-index: 1100;
+  pointer-events: none;
+}
+.locale-popover__title {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #00e5c0;
+}
+.locale-popover__desc {
+  margin: 0 0 0.45rem 0;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.35;
+}
+.locale-popover__list {
+  margin: 0 0 0.5rem 0;
+  padding-left: 1rem;
+  font-size: 0.72rem;
+  color: #e5e7eb;
+  line-height: 1.45;
+}
+.locale-popover__list code {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #00e5c0;
+}
+.locale-popover__example {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.35rem 0.55rem;
+  border-radius: 7px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.locale-popover__example span {
+  font-weight: 700;
+  color: #f0f4ff;
+  font-family: 'Courier New', monospace;
+}
+
+/* Notifications Dropdown */
+.notif-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.notif-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 340px;
+  max-height: 430px;
+  background: #0e1726;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.65), 0 0 20px rgba(0, 229, 192, 0.08);
+  padding: 0.65rem;
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+}
+.notif-dropdown__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.4rem;
+}
+.notif-dropdown__title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #f0f4ff;
+}
+.notif-dropdown__actions {
+  display: flex;
+  gap: 0.45rem;
+}
+.notif-dropdown__action {
+  background: none;
+  border: none;
+  color: #00e5c0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+.notif-dropdown__action:hover {
+  background: rgba(0, 229, 192, 0.12);
+}
+.notif-dropdown__action--clear {
+  color: rgba(255, 255, 255, 0.45);
+}
+.notif-dropdown__action--clear:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f87171;
+}
+.notif-dropdown__empty {
+  padding: 1.75rem 1rem;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.8rem;
+}
+.notif-dropdown__empty span {
+  font-size: 1.5rem;
+  display: block;
+  margin-bottom: 0.35rem;
+}
+.notif-dropdown__empty p {
+  margin: 0;
+}
+.notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.notif-list::-webkit-scrollbar { width: 4px; }
+.notif-list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 4px; }
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.6rem 0.65rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.notif-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.notif-item--unread {
+  background: rgba(0, 229, 192, 0.05);
+  border: 1px solid rgba(0, 229, 192, 0.14);
+}
+.notif-item__icon {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  margin-top: 2px;
+}
+.notif-item--success .notif-item__icon { background: rgba(0, 229, 192, 0.15); color: #00e5c0; }
+.notif-item--danger .notif-item__icon { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+.notif-item--warning .notif-item__icon { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+.notif-item--info .notif-item__icon { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+.notif-item__body {
+  flex: 1;
+  min-width: 0;
+}
+.notif-item__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+.notif-item__title {
+  font-size: 0.78rem;
+  color: #f0f4ff;
+  font-weight: 700;
+}
+.notif-item__time {
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.38);
+  white-space: nowrap;
+}
+.notif-item__msg {
+  margin: 0.2rem 0 0;
+  font-size: 0.74rem;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.35;
+}
+.notif-item__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #00e5c0;
+  flex-shrink: 0;
+  margin-top: 6px;
 }
 
 /* Avatar button and dropdown */
