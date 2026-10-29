@@ -11,4 +11,5 @@ cardRoutes.get('/', asyncHandler(VirtualCardController.list));
 cardRoutes.post('/', asyncHandler(VirtualCardController.create));
 cardRoutes.patch('/:id/limits', asyncHandler(VirtualCardController.updateLimits));
 cardRoutes.patch('/:id/status', asyncHandler(VirtualCardController.updateStatus));
+cardRoutes.post('/:id/authorize', asyncHandler(VirtualCardController.authorize));
 cardRoutes.delete('/:id', asyncHandler(VirtualCardController.delete));

@@ -217,6 +217,17 @@
               Límites
             </button>
             <button
+              v-if="selectedCard.status === 'ACTIVE'"
+              class="action-btn action-btn--simulate"
+              @click="openSimulateModal(selectedCard)"
+              id="btn-simulate-purchase"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Simular compra
+            </button>
+            <button
               v-if="selectedCard.status !== 'CANCELLED'"
               class="action-btn action-btn--cancel"
               @click="cancelCard(selectedCard)"
@@ -456,6 +467,97 @@
       </div>
     </transition>
 
+    <!-- ===== SIMULATE MODAL ===== -->
+    <transition name="modal-fade">
+      <div v-if="simulateModalOpen" class="modal-overlay" @click.self="closeSimulateModal">
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title-group">
+              <div class="modal-icon-wrap modal-icon-wrap--green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <div>
+                <h3 class="modal-title">Simular compra</h3>
+                <p class="modal-subtitle">{{ simulateCard?.tokenizedPan }}</p>
+              </div>
+            </div>
+            <button class="modal-close-btn" @click="closeSimulateModal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <!-- Result banner -->
+          <div v-if="simulateResult" class="simulate-result" :class="simulateResult.approved ? 'simulate-result--ok' : 'simulate-result--fail'">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path v-if="simulateResult.approved" d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path v-else d="M18 6L6 18M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <div>
+              <strong>{{ simulateResult.approved ? '✅ APROBADA' : '❌ RECHAZADA' }}</strong>
+              <p>{{ simulateResult.reason }}</p>
+              <p v-if="simulateResult.approved && simulateResult.newBalance !== undefined">
+                Nuevo saldo: ${{ formatAmount(simulateResult.newBalance) }}
+              </p>
+            </div>
+          </div>
+
+          <form v-if="!simulateResult" @submit.prevent="submitSimulate" class="modal-form">
+            <div class="form-group">
+              <label class="form-label" for="sim-merchant">Nombre del comercio *</label>
+              <input
+                id="sim-merchant"
+                v-model="simulateForm.merchantName"
+                type="text"
+                class="form-input"
+                placeholder="Ej: Amazon, Netflix, Casino Royale"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="sim-amount">Monto (USD) *</label>
+              <input
+                id="sim-amount"
+                v-model.number="simulateForm.amount"
+                type="number"
+                class="form-input"
+                placeholder="Ej: 200"
+                min="0.01"
+                step="0.01"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label class="form-label">¿Compra internacional?</label>
+              <div class="toggle-row">
+                <button
+                  type="button"
+                  class="toggle-btn"
+                  :class="{ 'toggle-btn--on': simulateForm.isInternational }"
+                  @click="simulateForm.isInternational = !simulateForm.isInternational"
+                >
+                  <span class="toggle-btn__dot"></span>
+                </button>
+                <span class="toggle-label">{{ simulateForm.isInternational ? 'Sí, internacional' : 'No, local' }}</span>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button type="button" class="btn btn--secondary" @click="closeSimulateModal">Cancelar</button>
+              <button type="submit" class="btn btn--primary" :disabled="simulating">
+                {{ simulating ? 'Procesando...' : 'Autorizar compra' }}
+              </button>
+            </div>
+          </form>
+
+          <div v-else class="modal-actions">
+            <button class="btn btn--secondary" @click="closeSimulateModal">Cerrar</button>
+            <button class="btn btn--primary" @click="simulateResult = null">Nueva simulación</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
   </div>
 </template>
 
@@ -570,6 +672,17 @@ const limitsForm = reactive({
   monthlyLimit: null as number | null,
   internationalAllowed: true,
   blockedCategories: [] as MerchantCategory[],
+});
+
+// Simulate modal state
+const simulateModalOpen = ref(false);
+const simulateCard = ref<VirtualCard | null>(null);
+const simulating = ref(false);
+const simulateResult = ref<{ approved: boolean; reason: string; newBalance?: number } | null>(null);
+const simulateForm = reactive({
+  merchantName: '',
+  amount: null as number | null,
+  isInternational: false,
 });
 
 // Helpers
@@ -750,6 +863,66 @@ const saveLimits = async () => {
   persistCards();
   limitsSuccessMsg.value = '¡Límites actualizados!';
   setTimeout(() => { limitsModalOpen.value = false; }, 900);
+};
+
+// Simulate purchase
+const openSimulateModal = (card: VirtualCard) => {
+  simulateCard.value = card;
+  simulateResult.value = null;
+  simulateForm.merchantName = '';
+  simulateForm.amount = null;
+  simulateForm.isInternational = false;
+  simulateModalOpen.value = true;
+};
+
+const closeSimulateModal = () => {
+  simulateModalOpen.value = false;
+  simulateCard.value = null;
+  simulateResult.value = null;
+};
+
+const submitSimulate = async () => {
+  if (!simulateCard.value || !simulateForm.amount || !simulateForm.merchantName.trim()) return;
+  simulating.value = true;
+  try {
+    const res = await api.post<any>(`/cards/${simulateCard.value.id}/authorize`, {
+      amount: simulateForm.amount,
+      merchantName: simulateForm.merchantName.trim(),
+      isInternational: simulateForm.isInternational,
+    });
+    simulateResult.value = res.data;
+    // Update card in list if approved
+    if (res.data.approved && res.data.card) {
+      const idx = cards.value.findIndex(c => c.id === simulateCard.value!.id);
+      if (idx >= 0) {
+        cards.value[idx] = normalizeCard(res.data.card);
+        if (selectedCard.value?.id === simulateCard.value.id) {
+          selectedCard.value = cards.value[idx];
+        }
+        persistCards();
+      }
+
+      transactions.value.unshift({
+        id: 'txn_' + Date.now(),
+        walletId: 'w1',
+        cardId: simulateCard.value.id,
+        type: 'CARD_PAYMENT',
+        status: 'COMPLETED',
+        amount: res.data.amount,
+        currency: 'USD',
+        merchantName: res.data.merchantName,
+        referenceCode: 'CARD-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+        createdAt: new Date().toISOString(),
+      });
+    }
+  } catch (err: any) {
+    simulateResult.value = {
+      approved: false,
+      reason: err.response?.data?.message || 'Error al procesar la compra',
+    };
+  } finally {
+    simulating.value = false;
+  }
 };
 
 // Data fetch logic
@@ -1408,6 +1581,7 @@ watch(() => authStore.user?.id, () => {
 }
 .modal-icon-wrap svg { width: 20px; height: 20px; }
 .modal-icon-wrap--blue { background: rgba(96,165,250,0.12); color: #60a5fa; }
+.modal-icon-wrap--green { background: rgba(0,229,192,0.12); color: #00e5c0; }
 .modal-title {
   font-size: 1.1rem;
   font-weight: 700;
@@ -1617,4 +1791,35 @@ watch(() => authStore.user?.id, () => {
   .quick-actions { flex-direction: column; }
   .rules-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== SIMULATE BUTTON ===== */
+.action-btn--simulate {
+  background: rgba(0, 229, 192, 0.1);
+  color: #00e5c0;
+  border: 1px solid rgba(0, 229, 192, 0.18);
+}
+.action-btn--simulate:hover { background: rgba(0, 229, 192, 0.2); }
+
+/* ===== SIMULATE RESULT BANNER ===== */
+.simulate-result {
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+.simulate-result svg { width: 22px; height: 22px; flex-shrink: 0; margin-top: 2px; }
+.simulate-result--ok {
+  background: rgba(0, 229, 192, 0.1);
+  border: 1px solid rgba(0, 229, 192, 0.3);
+  color: #00e5c0;
+}
+.simulate-result--fail {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+.simulate-result p { margin: 0.25rem 0 0; font-size: 0.84rem; opacity: 0.85; }
+.simulate-result strong { font-size: 0.95rem; letter-spacing: 0.01em; }
 </style>
