@@ -263,12 +263,6 @@
                   {{ selectedCard.spendingRules.internationalAllowed ? 'Permitido' : 'Bloqueado' }}
                 </span>
               </div>
-              <div class="rule-item">
-                <span class="rule-item__label">Cat. bloqueadas</span>
-                <span class="rule-item__value">
-                  {{ selectedCard.spendingRules.blockedCategories.length > 0 ? selectedCard.spendingRules.blockedCategories.join(', ') : 'Ninguna' }}
-                </span>
-              </div>
             </div>
           </div>
 
@@ -380,21 +374,6 @@
                 <span class="toggle-label">{{ issueForm.internationalAllowed ? 'Permitidas' : 'Bloqueadas' }}</span>
               </div>
             </div>
-            <div class="form-group">
-              <label class="form-label">Categorías bloqueadas</label>
-              <div class="category-chips">
-                <button
-                  v-for="cat in allCategories"
-                  :key="cat"
-                  type="button"
-                  class="category-chip"
-                  :class="{ 'category-chip--blocked': issueForm.blockedCategories.includes(cat) }"
-                  @click="toggleCategory(issueForm, cat)"
-                >
-                  {{ categoryLabel(cat) }}
-                </button>
-              </div>
-            </div>
 
             <div v-if="issueErrorMsg" class="form-error">
               <span>{{ issueErrorMsg }}</span>
@@ -460,21 +439,6 @@
                 <span class="toggle-label">{{ limitsForm.internationalAllowed ? 'Permitidas' : 'Bloqueadas' }}</span>
               </div>
             </div>
-            <div class="form-group">
-              <label class="form-label">Categorías bloqueadas</label>
-              <div class="category-chips">
-                <button
-                  v-for="cat in allCategories"
-                  :key="cat"
-                  type="button"
-                  class="category-chip"
-                  :class="{ 'category-chip--blocked': limitsForm.blockedCategories.includes(cat) }"
-                  @click="toggleCategory(limitsForm, cat)"
-                >
-                  {{ categoryLabel(cat) }}
-                </button>
-              </div>
-            </div>
 
             <div v-if="limitsSuccessMsg" class="form-success">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -525,16 +489,14 @@ const filterTabs = [
   { label: 'Canceladas', value: 'CANCELLED' },
 ];
 
-const allCategories: MerchantCategory[] = ['GAMBLING', 'ENTERTAINMENT', 'RESTAURANTS', 'GROCERIES', 'TRAVEL'];
-
 // Normalizer for backend / local cards
 const normalizeCard = (c: any): VirtualCard => {
   const pan = c.tokenizedPan || c.maskedNumber || ('**** **** **** ' + (c.id ? String(c.id).slice(-4) : '7788'));
-  const exp = c.expirationDate || '11/29';
+  const exp = c.expirationDate || c.expiration_date || '12/28';
   const monthly = c.spendingRules?.monthlyLimit ?? (typeof c.monthlyLimit === 'number' ? c.monthlyLimit : null);
-  const daily = c.spendingRules?.dailyLimit ?? (typeof c.dailyLimit === 'number' ? c.dailyLimit : (monthly ? Math.round(monthly / 30) : null));
-  const intl = c.spendingRules?.internationalAllowed ?? (c.internationalAllowed ?? true);
-  const blocked = c.spendingRules?.blockedCategories ?? (c.blockedCategories ?? []);
+  const daily = c.spendingRules?.dailyLimit ?? (typeof c.dailyLimit === 'number' ? c.dailyLimit : null);
+  const intl = c.spendingRules?.internationalAllowed ?? (c.internationalAllowed ?? c.international_allowed ?? true);
+  const blocked = c.spendingRules?.blockedCategories ?? (c.blockedCategories ?? c.blocked_categories ?? []);
 
   return {
     id: String(c.id),
@@ -542,6 +504,7 @@ const normalizeCard = (c: any): VirtualCard => {
     tokenizedPan: pan,
     cardholderName: c.cardholderName || c.cardholder_name || (authStore.user ? `${authStore.user.firstName} ${authStore.user.lastName}`.trim().toUpperCase() : 'TITULAR'),
     expirationDate: exp,
+    cvv: c.cvv,
     status: c.status || 'ACTIVE',
     spendingRules: {
       dailyLimit: daily,
@@ -634,20 +597,6 @@ const txnColor = (txn: Transaction) => {
   if (txn.status === 'FAILED' || txn.status === 'REJECTED_BY_RULE') return 'red';
   if (txn.type === 'DEPOSIT') return 'green';
   return 'blue';
-};
-
-const categoryLabel = (cat: MerchantCategory) => ({
-  GAMBLING: '🎰 Apuestas',
-  ENTERTAINMENT: '🎮 Entretenimiento',
-  RESTAURANTS: '🍔 Restaurantes',
-  GROCERIES: '🛒 Supermercado',
-  TRAVEL: '✈️ Viajes',
-}[cat] ?? cat);
-
-const toggleCategory = (form: { blockedCategories: MerchantCategory[] }, cat: MerchantCategory) => {
-  const idx = form.blockedCategories.indexOf(cat);
-  if (idx >= 0) form.blockedCategories.splice(idx, 1);
-  else form.blockedCategories.push(cat);
 };
 
 // Actions
@@ -781,7 +730,16 @@ const saveLimits = async () => {
     blockedCategories: [...limitsForm.blockedCategories],
   };
   try {
-    await api.patch(`/cards/${card.id}/limits`, { monthlyLimit: newRules.monthlyLimit || 0 });
+    const res = await api.patch(`/cards/${card.id}/limits`, {
+      monthlyLimit: newRules.monthlyLimit ?? 0,
+      dailyLimit: newRules.dailyLimit,
+      internationalAllowed: newRules.internationalAllowed,
+      blockedCategories: newRules.blockedCategories,
+    });
+    if (res.data) {
+      const updated = normalizeCard(res.data);
+      Object.assign(card, updated);
+    }
   } catch {
     // fallback
   }
@@ -1311,7 +1269,7 @@ watch(() => authStore.user?.id, () => {
 }
 .rules-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.75rem;
 }
 .rule-item {

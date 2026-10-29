@@ -293,11 +293,11 @@ const cardThemes = ['teal', 'indigo', 'rose'];
 // Normalizer identical to cards.vue
 const normalizeCard = (c: any): VirtualCard => {
   const pan = c.tokenizedPan || c.maskedNumber || ('**** **** **** ' + (c.id ? String(c.id).slice(-4) : '7788'));
-  const exp = c.expirationDate || '11/29';
+  const exp = c.expirationDate || c.expiration_date || '12/28';
   const monthly = c.spendingRules?.monthlyLimit ?? (typeof c.monthlyLimit === 'number' ? c.monthlyLimit : null);
-  const daily = c.spendingRules?.dailyLimit ?? (typeof c.dailyLimit === 'number' ? c.dailyLimit : (monthly ? Math.round(monthly / 30) : null));
-  const intl = c.spendingRules?.internationalAllowed ?? (c.internationalAllowed ?? true);
-  const blocked = c.spendingRules?.blockedCategories ?? (c.blockedCategories ?? []);
+  const daily = c.spendingRules?.dailyLimit ?? (typeof c.dailyLimit === 'number' ? c.dailyLimit : null);
+  const intl = c.spendingRules?.internationalAllowed ?? (c.internationalAllowed ?? c.international_allowed ?? true);
+  const blocked = c.spendingRules?.blockedCategories ?? (c.blockedCategories ?? c.blocked_categories ?? []);
 
   return {
     id: String(c.id),
