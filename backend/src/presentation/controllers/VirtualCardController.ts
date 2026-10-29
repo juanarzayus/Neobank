@@ -164,4 +164,111 @@ export const VirtualCardController = {
     if (!rowCount) throw new AppError(404, 'Tarjeta no encontrada');
     res.status(204).end();
   },
+
+  async authorize(req: Request, res: Response) {
+    const { amount, merchantName = 'Comercio', isInternational = false } = req.body ?? {};
+
+    // Validate amount
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
+      throw new AppError(400, 'El monto debe ser un número mayor a 0');
+    }
+    if (amount > 1_000_000) throw new AppError(400, 'Monto demasiado alto');
+    const rounded = Math.round(amount * 100) / 100;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Lock and fetch card
+      const { rows: cardRows } = await client.query(
+        'SELECT * FROM virtual_cards WHERE id = $1 AND user_id = $2 FOR UPDATE',
+        [req.params.id, res.locals.userId]
+      );
+      if (!cardRows[0]) throw new AppError(404, 'Tarjeta no encontrada');
+      const card = cardRows[0];
+
+      // 2. Authorization checks (always return HTTP 200 — rejection is a business outcome)
+      if (card.status === 'CANCELLED') {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ approved: false, reason: 'Tarjeta cancelada' });
+      }
+      if (card.status === 'FROZEN') {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ approved: false, reason: 'Tarjeta congelada' });
+      }
+      if (isInternational && !card.international_allowed) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ approved: false, reason: 'Compras internacionales desactivadas en esta tarjeta' });
+      }
+      if (Number(card.monthly_limit) > 0 && Number(card.current_spending) + rounded > Number(card.monthly_limit)) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ approved: false, reason: `Límite mensual superado ($${card.monthly_limit})` });
+      }
+
+      // Daily spending check — computed from account_transactions recorded today
+      if (card.daily_limit !== null && card.daily_limit !== undefined && Number(card.daily_limit) > 0) {
+        const { rows: dailyRows } = await client.query(
+          `SELECT COALESCE(SUM(amount), 0) AS spent FROM account_transactions
+           WHERE description LIKE $1 AND created_at >= date_trunc('day', NOW() AT TIME ZONE 'America/Bogota')`,
+          [`%[${card.id}]%`]
+        );
+        const dailySpent = Number(dailyRows[0].spent);
+        if (dailySpent + rounded > Number(card.daily_limit)) {
+          await client.query('ROLLBACK');
+          return res.status(200).json({ approved: false, reason: `Límite diario superado ($${card.daily_limit})` });
+        }
+      }
+
+      // 3. Find CHECKING account and check balance
+      const { rows: accountRows } = await client.query(
+        "SELECT * FROM accounts WHERE user_id = $1 AND type = 'CHECKING' FOR UPDATE",
+        [res.locals.userId]
+      );
+      if (!accountRows[0]) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ approved: false, reason: 'No se encontró cuenta principal (CHECKING)' });
+      }
+      const account = accountRows[0];
+      if (Number(account.balance) < rounded) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ approved: false, reason: `Saldo insuficiente (disponible: $${Number(account.balance).toFixed(2)})` });
+      }
+
+      // 4. Deduct balance from account
+      const { rows: updatedAccountRows } = await client.query(
+        'UPDATE accounts SET balance = balance - $1 WHERE id = $2 RETURNING *',
+        [rounded, account.id]
+      );
+      const newBalance = Number(updatedAccountRows[0].balance);
+
+      // 5. Update current_spending on card
+      const { rows: updatedCardRows } = await client.query(
+        'UPDATE virtual_cards SET current_spending = current_spending + $1 WHERE id = $2 RETURNING *',
+        [rounded, card.id]
+      );
+
+      // 6. Record transaction in account_transactions
+      await client.query(
+        `INSERT INTO account_transactions (account_id, type, amount, balance_after, description)
+         VALUES ($1, 'WITHDRAWAL', $2, $3, $4)`,
+        [account.id, rounded, newBalance, `Pago: ${merchantName} [${card.id}]`]
+      );
+
+      await client.query('COMMIT');
+      res.json({
+        approved: true,
+        reason: 'Compra aprobada',
+        amount: rounded,
+        merchantName,
+        newBalance,
+        currentSpending: Number(updatedCardRows[0].current_spending),
+        card: toCard(updatedCardRows[0]),
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
 };
