@@ -306,7 +306,15 @@
 
           <!-- Recent transactions for this card -->
           <div class="card-txns">
-            <h4 class="card-txns__title">Últimos movimientos</h4>
+            <div class="card-txns__head">
+              <h4 class="card-txns__title">Últimos movimientos</h4>
+              <router-link
+                :to="{ path: '/transactions', query: { account: 'cards', card: selectedCard.id } }"
+                class="card-txns__link"
+              >
+                Ver todos →
+              </router-link>
+            </div>
             <div v-if="cardTransactions.length === 0" class="card-txns__empty">
               Sin movimientos registrados para esta tarjeta
             </div>
@@ -531,6 +539,23 @@
               />
             </div>
             <div class="form-group">
+              <label class="form-label">Categoría del gasto</label>
+              <div class="sim-cat-grid" role="radiogroup" aria-label="Categoría del gasto">
+                <button
+                  v-for="cat in CARD_SPENDING_CATEGORIES"
+                  :key="cat.id"
+                  type="button"
+                  class="sim-cat-btn"
+                  :class="{ 'sim-cat-btn--active': simulateForm.category === cat.id }"
+                  :style="simulateForm.category === cat.id ? { borderColor: cat.color, background: cat.color + '1c' } : {}"
+                  @click="simulateForm.category = cat.id"
+                >
+                  <span class="sim-cat-btn__icon">{{ cat.icon }}</span>
+                  <span class="sim-cat-btn__label">{{ cat.label }}</span>
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
               <label class="form-label">¿Compra internacional?</label>
               <div class="toggle-row">
                 <button
@@ -573,6 +598,11 @@ import logo from '@/assets/LOGONOVA.png';
 import { accountService } from '@/services/accountService';
 import { numberLocale, formatAmount, formatMoneyInput, parseMoney } from '@/utils/numberFormat';
 import { pushNotification } from '@/utils/notifications';
+import {
+  CARD_SPENDING_CATEGORIES,
+  getCategoryById,
+  type SpendingCategoryId,
+} from '@/utils/spendingCategories';
 
 const authStore = useAuthStore();
 
@@ -702,6 +732,7 @@ const simulateResult = ref<{ approved: boolean; reason: string; newBalance?: num
 const simulateForm = reactive({
   merchantName: '',
   amount: '' as string | number | null,
+  category: 'SHOPPING' as SpendingCategoryId,
   isInternational: false,
 });
 
@@ -924,6 +955,7 @@ const openSimulateModal = (card: VirtualCard) => {
   simulateResult.value = null;
   simulateForm.merchantName = '';
   simulateForm.amount = '';
+  simulateForm.category = 'SHOPPING';
   simulateForm.isInternational = false;
   simulateModalOpen.value = true;
 };
@@ -942,13 +974,15 @@ const submitSimulate = async () => {
     const res = await api.post<any>(`/cards/${simulateCard.value.id}/authorize`, {
       amount: parsedAmount,
       merchantName: simulateForm.merchantName.trim(),
+      category: simulateForm.category,
       isInternational: simulateForm.isInternational,
     });
     simulateResult.value = res.data;
     if (res.data.approved) {
+      const catLabel = getCategoryById(simulateForm.category)?.label;
       pushNotification({
         title: 'Pago exitoso',
-        message: `Compra aprobada en ${res.data.merchantName || simulateForm.merchantName.trim()} por $${formatAmount(parsedAmount)} (Tarjeta ${simulateCard.value.tokenizedPan.slice(-4)}).`,
+        message: `Compra aprobada en ${res.data.merchantName || simulateForm.merchantName.trim()}${catLabel ? ` (${catLabel})` : ''} por $${formatAmount(parsedAmount)} (Tarjeta ${simulateCard.value.tokenizedPan.slice(-4)}).`,
         type: 'success',
       });
     } else {
@@ -1615,12 +1649,25 @@ watch(() => authStore.user?.id, () => {
 }
 
 /* Card transactions */
+.card-txns__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
 .card-txns__title {
   font-size: 0.82rem;
   font-weight: 700;
   color: #f0f4ff;
-  margin-bottom: 0.75rem;
+  margin: 0;
 }
+.card-txns__link {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #00e5c0;
+  text-decoration: none;
+}
+.card-txns__link:hover { text-decoration: underline; }
 .card-txns__empty {
   font-size: 0.8rem;
   color: rgba(255,255,255,0.3);
@@ -1942,4 +1989,45 @@ watch(() => authStore.user?.id, () => {
 }
 .simulate-result p { margin: 0.25rem 0 0; font-size: 0.84rem; opacity: 0.85; }
 .simulate-result strong { font-size: 0.95rem; letter-spacing: 0.01em; }
+
+.sim-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.45rem;
+}
+.sim-cat-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.35rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(13, 17, 23, 0.7);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.sim-cat-btn:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.sim-cat-btn--active {
+  color: #fff;
+}
+.sim-cat-btn__icon {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+.sim-cat-btn__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .sim-cat-grid { grid-template-columns: repeat(2, 1fr); }
+}
 </style>

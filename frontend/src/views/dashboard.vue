@@ -185,7 +185,7 @@
       <div class="transactions-panel">
         <div class="panel-header">
           <h2 class="panel-title">Movimientos recientes</h2>
-          <router-link to="/wallet" class="panel-link">Ver billetera →</router-link>
+          <router-link to="/transactions" class="panel-link">Ver movimientos →</router-link>
         </div>
 
         <div v-if="loading" class="txn-skeleton-list">
@@ -206,8 +206,11 @@
               </svg>
             </div>
             <div class="txn-details">
-              <span class="txn-name">{{ m.description || movementTypeLabel[m.type] || 'Movimiento' }}</span>
-              <span class="txn-date">{{ formatDate(m.createdAt) }}</span>
+              <span class="txn-name">{{ formatMovementLabel(m, movementTypeLabel[m.type] || 'Movimiento') }}</span>
+              <span class="txn-date">
+                {{ formatDate(m.createdAt) }}
+                <template v-if="!isCredit(m)"> · {{ resolveMovementCategory(m).label }}</template>
+              </span>
             </div>
             <div class="txn-amount" :class="isCredit(m) ? 'txn-amount--credit' : 'txn-amount--debit'">
               {{ isCredit(m) ? '+' : '-' }}${{ formatAmount(m.amount) }}
@@ -231,10 +234,13 @@
           <span>Sin consumos registrados este mes</span>
         </div>
         <div v-else class="spending-list">
-          <div v-for="cat in dynamicSpendingCategories" :key="cat.name" class="spending-item">
+          <div v-for="cat in dynamicSpendingCategories" :key="cat.id" class="spending-item">
             <div class="spending-item__icon" :style="{ background: cat.color + '22', color: cat.color }">{{ cat.icon }}</div>
             <div class="spending-item__info">
-              <span class="spending-item__name">{{ cat.name }}</span>
+              <div class="spending-item__top">
+                <span class="spending-item__name">{{ cat.name }}</span>
+                <span class="spending-item__amount">${{ formatAmount(cat.amount) }}</span>
+              </div>
               <div class="spending-item__bar-wrap">
                 <div class="spending-item__bar" :style="{ width: cat.pct + '%', background: cat.color }"></div>
               </div>
@@ -276,6 +282,7 @@ import { api } from '@/services/api';
 import { accountService } from '@/services/accountService';
 import logo from '@/assets/LOGONOVA.png';
 import { numberLocale, formatAmount } from '@/utils/numberFormat';
+import { resolveMovementCategory, formatMovementLabel } from '@/utils/spendingCategories';
 
 const authStore = useAuthStore();
 const getCardsStorageKey = () => {
@@ -359,30 +366,32 @@ const currentDate = computed(() => {
 const dynamicSpendingCategories = computed(() => {
   const expenseMovements = movements.value.filter(m => !isCredit(m));
   if (expenseMovements.length === 0) return [];
-  const total = expenseMovements.reduce((sum, m) => sum + m.amount, 0);
+  const total = expenseMovements.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
   if (total <= 0) return [];
 
-  const byType: Record<string, number> = {};
+  const grouped = new Map<string, { id: string; name: string; icon: string; color: string; amount: number }>();
   expenseMovements.forEach(m => {
-    const key = m.type === 'TRANSFER_OUT' ? 'Transferencias' : (m.type === 'WITHDRAWAL' ? 'Retiros' : 'Pagos');
-    byType[key] = (byType[key] || 0) + m.amount;
+    const meta = resolveMovementCategory(m);
+    const existing = grouped.get(meta.id);
+    if (existing) {
+      existing.amount += Number(m.amount) || 0;
+    } else {
+      grouped.set(meta.id, {
+        id: meta.id,
+        name: meta.label,
+        icon: meta.icon,
+        color: meta.color,
+        amount: Number(m.amount) || 0,
+      });
+    }
   });
 
-  const colorMap: Record<string, { icon: string; color: string }> = {
-    'Transferencias': { icon: '⇄', color: '#8b5cf6' },
-    'Retiros': { icon: '🏧', color: '#f97316' },
-    'Pagos': { icon: '💳', color: '#00e5c0' },
-  };
-
-  return Object.entries(byType).map(([name, amount]) => {
-    const meta = colorMap[name] || { icon: '📦', color: '#6b7280' };
-    return {
-      name,
-      icon: meta.icon,
-      pct: Math.round((amount / total) * 100),
-      color: meta.color,
-    };
-  });
+  return Array.from(grouped.values())
+    .sort((a, b) => b.amount - a.amount)
+    .map(item => ({
+      ...item,
+      pct: Math.max(1, Math.round((item.amount / total) * 100)),
+    }));
 });
 
 // Weekly activity computed from real movements
@@ -982,7 +991,9 @@ watch(() => authStore.user?.id, () => {
   flex-shrink: 0;
 }
 .spending-item__info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.spending-item__top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .spending-item__name { font-size: 0.8rem; font-weight: 600; color: #d1d5db; }
+.spending-item__amount { font-size: 0.76rem; font-weight: 700; color: rgba(255,255,255,0.65); }
 .spending-item__bar-wrap { height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
 .spending-item__bar { height: 100%; border-radius: 3px; transition: width 1s cubic-bezier(.4,0,.2,1); }
 .spending-item__pct { font-size: 0.78rem; font-weight: 700; color: rgba(255,255,255,0.45); min-width: 32px; text-align: right; }

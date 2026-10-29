@@ -7,6 +7,43 @@ import { AppError } from '../../infrastructure/middlewares/errorHandlerMiddlewar
 const SAVINGS_ANNUAL_RATE = 0.04;
 const MAX_AMOUNT = 1_000_000_000;
 
+const ALLOWED_CATEGORIES = new Set([
+  'FOOD',
+  'SHOPPING',
+  'TRANSPORT',
+  'UTILITIES',
+  'ENTERTAINMENT',
+  'HEALTH',
+  'EDUCATION',
+  'CASH',
+  'TRANSFERS',
+  'OTHER',
+]);
+
+let categoryColumnReady: Promise<void> | null = null;
+
+/** Garantiza de forma idempotente que la columna category exista en account_transactions. */
+export const ensureCategoryColumn = (): Promise<void> => {
+  if (!categoryColumnReady) {
+    categoryColumnReady = pool
+      .query('ALTER TABLE account_transactions ADD COLUMN IF NOT EXISTS category VARCHAR(40) DEFAULT NULL')
+      .then(() => undefined)
+      .catch((err) => {
+        categoryColumnReady = null;
+        throw err;
+      });
+  }
+  return categoryColumnReady;
+};
+
+export const parseCategory = (value: unknown): string | null => {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') throw new AppError(400, 'Categoría no válida');
+  const normalized = value.trim().toUpperCase();
+  if (!ALLOWED_CATEGORIES.has(normalized)) throw new AppError(400, 'Categoría no válida');
+  return normalized;
+};
+
 const toAccount = (row: any) => ({
   id: row.id,
   type: row.type,
@@ -25,6 +62,7 @@ const toMovement = (row: any) => ({
   balanceAfter: Number(row.balance_after),
   relatedAccountId: row.related_account_id,
   description: row.description,
+  category: row.category ?? null,
   createdAt: row.created_at,
 });
 
@@ -77,12 +115,20 @@ const getOwnedAccount = async (client: PoolClient, userId: string, id: string) =
 
 const recordMovement = (
   client: PoolClient,
-  m: { accountId: string; type: string; amount: number; balanceAfter: number; relatedId?: string; description?: string }
+  m: {
+    accountId: string;
+    type: string;
+    amount: number;
+    balanceAfter: number;
+    relatedId?: string;
+    description?: string;
+    category?: string | null;
+  }
 ) =>
   client.query(
-    `INSERT INTO account_transactions (account_id, type, amount, balance_after, related_account_id, description)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [m.accountId, m.type, m.amount, m.balanceAfter, m.relatedId ?? null, m.description ?? null]
+    `INSERT INTO account_transactions (account_id, type, amount, balance_after, related_account_id, description, category)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [m.accountId, m.type, m.amount, m.balanceAfter, m.relatedId ?? null, m.description ?? null, m.category ?? null]
   );
 
 export const AccountController = {
@@ -116,6 +162,7 @@ export const AccountController = {
 
   /** Depósito externo simulado: solo a la cuenta corriente. */
   async deposit(req: Request, res: Response) {
+    await ensureCategoryColumn();
     const amount = parseAmount(req.body?.amount);
     const result = await withTransaction(async (client) => {
       const account = await getOwnedAccount(client, res.locals.userId, req.params.id);
@@ -140,7 +187,12 @@ export const AccountController = {
 
   /** Retiro externo simulado: solo de la cuenta corriente. */
   async withdraw(req: Request, res: Response) {
+    await ensureCategoryColumn();
     const amount = parseAmount(req.body?.amount);
+    const category = parseCategory(req.body?.category);
+    const rawDesc = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+    if (rawDesc.length > 200) throw new AppError(400, 'La descripción es demasiado larga');
+
     const result = await withTransaction(async (client) => {
       const account = await getOwnedAccount(client, res.locals.userId, req.params.id);
       if (account.type !== 'CHECKING') {
@@ -156,7 +208,8 @@ export const AccountController = {
         type: 'WITHDRAWAL',
         amount,
         balanceAfter: Number(rows[0].balance),
-        description: req.body?.description,
+        description: rawDesc || undefined,
+        category,
       });
       return rows[0];
     });
@@ -165,6 +218,7 @@ export const AccountController = {
 
   /** Transferencia entre cuentas propias (principal <-> ahorros, o ahorros <-> ahorros). */
   async transfer(req: Request, res: Response) {
+    await ensureCategoryColumn();
     const { fromAccountId, toAccountId } = req.body ?? {};
     const amount = parseAmount(req.body?.amount);
     if (!isUuid(fromAccountId) || !isUuid(toAccountId)) throw new AppError(400, 'Cuentas no válidas');
@@ -183,6 +237,7 @@ export const AccountController = {
       await recordMovement(client, {
         accountId: from.id, type: 'TRANSFER_OUT', amount,
         balanceAfter: Number(debited.rows[0].balance), relatedId: to.id, description: `Transferencia a ${to.name}`,
+        category: 'TRANSFERS',
       });
       await recordMovement(client, {
         accountId: to.id, type: 'TRANSFER_IN', amount,
@@ -198,6 +253,7 @@ export const AccountController = {
    * Solo una vez por mes calendario por cuenta.
    */
   async creditInterest(req: Request, res: Response) {
+    await ensureCategoryColumn();
     const result = await withTransaction(async (client) => {
       const account = await getOwnedAccount(client, res.locals.userId, req.params.id);
       if (account.type !== 'SAVINGS') throw new AppError(400, 'Solo las cuentas de ahorro generan intereses');
@@ -233,6 +289,7 @@ export const AccountController = {
   },
 
   async movements(req: Request, res: Response) {
+    await ensureCategoryColumn();
     if (!isUuid(req.params.id)) throw new AppError(404, 'Cuenta no encontrada');
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const { rows } = await pool.query(
