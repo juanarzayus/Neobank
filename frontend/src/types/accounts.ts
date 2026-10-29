@@ -1,3 +1,5 @@
+import type { SpendingCategoryId } from '@/utils/spendingCategories';
+
 export type AccountType = 'CHECKING' | 'SAVINGS';
 export type AccountMovementType = 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'INTEREST';
 
@@ -20,5 +22,6 @@ export interface AccountMovement {
     balanceAfter: number;
     relatedAccountId: string | null;
     description: string | null;
+    category?: SpendingCategoryId | string | null;
     createdAt: string;
 }

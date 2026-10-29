@@ -2,6 +2,7 @@ import { randomInt } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { pool } from '../../infrastructure/database/PostgresPool';
 import { AppError } from '../../infrastructure/middlewares/errorHandlerMiddleware';
+import { ensureCategoryColumn, parseCategory } from './AccountController';
 
 const STATUSES = ['ACTIVE', 'FROZEN', 'CANCELLED'];
 
@@ -166,7 +167,9 @@ export const VirtualCardController = {
   },
 
   async authorize(req: Request, res: Response) {
+    await ensureCategoryColumn();
     const { amount, merchantName = 'Comercio', isInternational = false } = req.body ?? {};
+    const category = parseCategory(req.body?.category) ?? 'SHOPPING';
 
     // Validate amount
     if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
@@ -199,6 +202,10 @@ export const VirtualCardController = {
       if (isInternational && !card.international_allowed) {
         await client.query('ROLLBACK');
         return res.status(200).json({ approved: false, reason: 'Compras internacionales desactivadas en esta tarjeta' });
+      }
+      if (Array.isArray(card.blocked_categories) && card.blocked_categories.includes(category)) {
+        await client.query('ROLLBACK');
+        return res.status(200).json({ approved: false, reason: 'Categoría de comercio bloqueada en esta tarjeta' });
       }
       if (Number(card.monthly_limit) > 0 && Number(card.current_spending) + rounded > Number(card.monthly_limit)) {
         await client.query('ROLLBACK');
@@ -249,9 +256,9 @@ export const VirtualCardController = {
 
       // 6. Record transaction in account_transactions
       await client.query(
-        `INSERT INTO account_transactions (account_id, type, amount, balance_after, description)
-         VALUES ($1, 'WITHDRAWAL', $2, $3, $4)`,
-        [account.id, rounded, newBalance, `Pago: ${merchantName} [${card.id}]`]
+        `INSERT INTO account_transactions (account_id, type, amount, balance_after, description, category)
+         VALUES ($1, 'WITHDRAWAL', $2, $3, $4, $5)`,
+        [account.id, rounded, newBalance, `Pago: ${merchantName} [${card.id}]`, category]
       );
 
       await client.query('COMMIT');
@@ -260,6 +267,7 @@ export const VirtualCardController = {
         reason: 'Compra aprobada',
         amount: rounded,
         merchantName,
+        category,
         newBalance,
         currentSpending: Number(updatedCardRows[0].current_spending),
         card: toCard(updatedCardRows[0]),
