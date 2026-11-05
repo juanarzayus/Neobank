@@ -1,5 +1,7 @@
 import type { IAccountMovementRepository } from '../../domain/repositories/IAccountMovementRepository';
 import type { IAccountRepository } from '../../domain/repositories/IAccountRepository';
+import type { ICurrencyExchangeRepository } from '../../domain/repositories/ICurrencyExchangeRepository';
+import type { ICurrencyWalletRepository } from '../../domain/repositories/ICurrencyWalletRepository';
 import type { IVirtualCardRepository } from '../../domain/repositories/IVirtualCardRepository';
 
 /** Repositorios que comparten una misma transacción. */
@@ -7,6 +9,8 @@ export interface TransactionalRepositories {
   accounts: IAccountRepository;
   movements: IAccountMovementRepository;
   cards: IVirtualCardRepository;
+  currencyWallets: ICurrencyWalletRepository;
+  currencyExchanges: ICurrencyExchangeRepository;
 }
 
 /**

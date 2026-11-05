@@ -1,9 +1,18 @@
 import type { AuthorizePurchaseResult } from '../../application/dtos/AuthorizePurchaseDto';
 import type { CardFundingResult, RevealedCardDetailsDto } from '../../application/dtos/UpdateLimitsDto';
+import type {
+  CurrencyWalletValuation,
+  ExecuteExchangeResult,
+  MultiCurrencyOverviewResult,
+} from '../../application/dtos/WalletDtos';
 import type { Account } from '../../domain/entities/Account';
 import type { AccountMovement } from '../../domain/entities/AccountMovement';
+import type { CurrencyExchange } from '../../domain/entities/CurrencyExchange';
+import type { CurrencyWallet } from '../../domain/entities/CurrencyWallet';
 import type { User } from '../../domain/entities/User';
 import type { VirtualCard } from '../../domain/entities/VirtualCard';
+import { CURRENCY_CATALOG } from '../../domain/value-objects/Currency';
+import type { ConversionResult, InternalCurrencyRate } from '../../domain/value-objects/ExchangeRate';
 
 /**
  * Formato JSON de la API. Se mantiene compatible con el frontend e incorpora
@@ -94,3 +103,69 @@ export const presentPurchase = (result: AuthorizePurchaseResult) => {
     card: presentCard(result.card),
   };
 };
+
+export const presentCurrencyWallet = (w: CurrencyWallet) => ({
+  id: w.id,
+  currency: w.currency,
+  name: w.currencyName,
+  symbol: w.symbol,
+  balance: w.balance,
+  createdAt: w.createdAt,
+});
+
+export const presentValuedCurrencyWallet = (item: CurrencyWalletValuation) => ({
+  ...presentCurrencyWallet(item.wallet),
+  copEquivalent: item.copEquivalent,
+  midCopRate: item.midCopRate,
+});
+
+export const presentInternalRate = (r: InternalCurrencyRate) => {
+  const meta = CURRENCY_CATALOG[r.currency];
+  return {
+    currency: r.currency,
+    name: meta.name,
+    symbol: meta.symbol,
+    copRate: r.copRate,
+    buyCopRate: r.buyCopRate,
+    sellCopRate: r.sellCopRate,
+    spreadPercent: Math.round(r.spreadRate * 10000) / 100,
+    updatedAt: r.updatedAt,
+  };
+};
+
+export const presentExchangeQuote = (c: ConversionResult) => ({
+  fromCurrency: c.fromCurrency,
+  toCurrency: c.toCurrency,
+  fromAmount: c.fromAmount,
+  toAmount: c.toAmount,
+  midMarketRate: c.midMarketRate,
+  effectiveRate: c.effectiveRate,
+  inverseRate: c.inverseRate,
+  spreadPercent: c.spreadPercent,
+  updatedAt: c.updatedAt,
+});
+
+export const presentCurrencyExchange = (e: CurrencyExchange) => ({
+  id: e.id,
+  fromCurrency: e.fromCurrency,
+  toCurrency: e.toCurrency,
+  fromAmount: e.fromAmount,
+  toAmount: e.toAmount,
+  rateApplied: e.rateApplied,
+  spreadPercent: e.spreadPercent,
+  createdAt: e.createdAt,
+});
+
+export const presentMultiCurrencyOverview = (o: MultiCurrencyOverviewResult) => ({
+  wallets: o.wallets.map(presentValuedCurrencyWallet),
+  rates: o.rates.map(presentInternalRate),
+  exchanges: o.exchanges.map(presentCurrencyExchange),
+  totalForeignInCop: o.totalForeignInCop,
+});
+
+export const presentExchangeExecution = (r: ExecuteExchangeResult) => ({
+  exchange: presentCurrencyExchange(r.exchange),
+  conversion: presentExchangeQuote(r.conversion),
+  checkingAccount: r.checkingAccount ? presentAccount(r.checkingAccount) : null,
+  wallets: r.wallets.map(presentCurrencyWallet),
+});

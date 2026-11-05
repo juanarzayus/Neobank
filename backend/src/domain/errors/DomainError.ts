@@ -64,3 +64,21 @@ export class AccountNumberNotFoundError extends NotFoundError {
     super('No existe una cuenta con ese número');
   }
 }
+
+export class CurrencyWalletNotFoundError extends NotFoundError {
+  constructor() {
+    super('Billetera en divisa no encontrada');
+  }
+}
+
+export class CurrencyWalletAlreadyExistsError extends ConflictError {
+  constructor() {
+    super('Ya tienes una billetera activa en esta moneda');
+  }
+}
+
+export class ExchangeRateNotAvailableError extends BusinessRuleError {
+  constructor() {
+    super('Tasa de cambio interna no disponible para este par de monedas');
+  }
+}
