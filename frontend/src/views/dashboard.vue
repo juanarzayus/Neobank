@@ -307,25 +307,36 @@ const cardThemes = ['teal', 'indigo', 'rose'];
 
 // Normalizer identical to cards.vue
 const normalizeCard = (c: any): VirtualCard => {
-  const pan = c.tokenizedPan || c.maskedNumber || ('**** **** **** ' + (c.id ? String(c.id).slice(-4) : '7788'));
+  const last4 = String(c.last4 || (c.maskedNumber || c.tokenizedPan || c.id || '7788')).slice(-4);
+  const pan = c.tokenizedPan || c.maskedNumber || ('**** **** **** ' + last4);
+  const token = c.cardToken || c.card_token || `tok_np_${String(c.id || Date.now()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)}`;
   const exp = c.expirationDate || c.expiration_date || '12/28';
   const monthly = c.spendingRules?.monthlyLimit ?? (typeof c.monthlyLimit === 'number' ? c.monthlyLimit : null);
   const daily = c.spendingRules?.dailyLimit ?? (typeof c.dailyLimit === 'number' ? c.dailyLimit : null);
   const intl = c.spendingRules?.internationalAllowed ?? (c.internationalAllowed ?? c.international_allowed ?? true);
   const blocked = c.spendingRules?.blockedCategories ?? (c.blockedCategories ?? c.blocked_categories ?? []);
+  const autoDebit =
+    c.spendingRules?.autoDebitFromAccount ??
+    c.autoDebitFromAccount ??
+    c.auto_debit_from_account ??
+    false;
 
   return {
     id: String(c.id),
     walletId: c.walletId || 'w1',
+    cardToken: token,
+    last4,
     tokenizedPan: pan,
     cardholderName: c.cardholderName || c.cardholder_name || (authStore.user ? `${authStore.user.firstName} ${authStore.user.lastName}`.trim().toUpperCase() : 'TITULAR'),
     expirationDate: exp,
+    prepaidBalance: Number(c.prepaidBalance ?? c.prepaid_balance ?? 0),
     status: c.status || 'ACTIVE',
     spendingRules: {
       dailyLimit: daily,
       monthlyLimit: monthly,
       internationalAllowed: intl,
       blockedCategories: blocked,
+      autoDebitFromAccount: Boolean(autoDebit),
     },
     issuedAt: c.issuedAt || c.createdAt || new Date().toISOString(),
   };
@@ -333,20 +344,25 @@ const normalizeCard = (c: any): VirtualCard => {
 
 // Computed Balances and Stats
 const totalBalance = computed(() => {
-  return accounts.value.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const accountsSum = accounts.value.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
+  const prepaidSum = cards.value.reduce((sum, c) => sum + (Number(c.prepaidBalance) || 0), 0);
+  return accountsSum + prepaidSum;
 });
+
+const isInternalCardTransfer = (m: AccountMovement) =>
+  Boolean(m.description && /^(Recarga|Descarga|Reembolso cierre) tarjeta prepago/i.test(m.description));
 
 const isCredit = (m: AccountMovement) => ['DEPOSIT', 'TRANSFER_IN', 'INTEREST'].includes(m.type);
 
 const monthlyIncome = computed(() => {
   return movements.value
-    .filter(m => isCredit(m))
+    .filter(m => isCredit(m) && !isInternalCardTransfer(m))
     .reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
 });
 
 const monthlyExpenses = computed(() => {
   return movements.value
-    .filter(m => !isCredit(m))
+    .filter(m => !isCredit(m) && !isInternalCardTransfer(m))
     .reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
 });
 
@@ -371,7 +387,7 @@ const currentDate = computed(() => {
 
 // Dynamic spending categories based on actual movements
 const dynamicSpendingCategories = computed(() => {
-  const expenseMovements = movements.value.filter(m => !isCredit(m));
+  const expenseMovements = movements.value.filter(m => !isCredit(m) && !isInternalCardTransfer(m));
   if (expenseMovements.length === 0) return [];
   const total = expenseMovements.reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
   if (total <= 0) return [];

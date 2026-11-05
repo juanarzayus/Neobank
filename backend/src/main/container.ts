@@ -1,6 +1,6 @@
 /**
  * Raíz de composición: el ÚNICO lugar que conoce a la vez los adaptadores concretos
- * (Postgres, scrypt, HMAC, Express) y los casos de uso. Aquí se conectan los puertos.
+ * (Postgres, scrypt, HMAC, AES-GCM Token Vault, Express) y los casos de uso. Aquí se conectan los puertos.
  */
 import { CreateSavingsAccountUseCase } from '../application/use-cases/accounts/CreateSavingsAccountUseCase';
 import { CreditMonthlyInterestUseCase } from '../application/use-cases/accounts/CreditMonthlyInterestUseCase';
@@ -19,6 +19,9 @@ import { CreateVirtualCardUseCase } from '../application/use-cases/cards/CreateV
 import { DeleteVirtualCardUseCase } from '../application/use-cases/cards/DeleteVirtualCardUseCase';
 import { ListVirtualCardsUseCase } from '../application/use-cases/cards/ListVirtualCardsUseCase';
 import { ProcessCardTransactionUseCase } from '../application/use-cases/cards/ProcessCardTransactionUseCase';
+import { RevealCardDetailsUseCase } from '../application/use-cases/cards/RevealCardDetailsUseCase';
+import { TopUpVirtualCardUseCase } from '../application/use-cases/cards/TopUpVirtualCardUseCase';
+import { UnloadVirtualCardUseCase } from '../application/use-cases/cards/UnloadVirtualCardUseCase';
 import { UpdateCardLimitsUseCase } from '../application/use-cases/cards/UpdateCardLimitsUseCase';
 import { UpdateCardStatusUseCase } from '../application/use-cases/cards/UpdateCardStatusUseCase';
 import { CheckDatabaseHealthUseCase } from '../application/use-cases/health/CheckDatabaseHealthUseCase';
@@ -30,6 +33,7 @@ import { PostgresAccountMovementRepository } from '../infrastructure/database/re
 import { PostgresAccountRepository } from '../infrastructure/database/repositories/PostgresAccountRepository';
 import { PostgresUserRepository } from '../infrastructure/database/repositories/PostgresUserRepository';
 import { PostgresVirtualCardRepository } from '../infrastructure/database/repositories/PostgresVirtualCardRepository';
+import { AesGcmCardTokenVault } from '../infrastructure/security/AesGcmCardTokenVault';
 import { HmacTokenService } from '../infrastructure/security/HmacTokenService';
 import { RandomCardDetailsGenerator } from '../infrastructure/security/RandomCardDetailsGenerator';
 import { ScryptPasswordHasher } from '../infrastructure/security/ScryptPasswordHasher';
@@ -55,6 +59,7 @@ export function buildContainer(): HttpAppDeps {
     refresh: env.refreshTtlSeconds,
   });
   const cardDetails = new RandomCardDetailsGenerator();
+  const cardVault = new AesGcmCardTokenVault(env.jwtSecret);
   const healthCheck = new PostgresHealthCheck(pool);
 
   // ---- Adaptadores de entrada (driving) + casos de uso ----
@@ -82,10 +87,13 @@ export function buildContainer(): HttpAppDeps {
 
   const cardController = new VirtualCardController({
     list: new ListVirtualCardsUseCase(cards, uow, clock),
-    create: new CreateVirtualCardUseCase(cards, cardDetails, clock),
+    create: new CreateVirtualCardUseCase(uow, cardDetails, cardVault, clock),
+    reveal: new RevealCardDetailsUseCase(cards, cardVault),
+    topUp: new TopUpVirtualCardUseCase(uow),
+    unload: new UnloadVirtualCardUseCase(uow),
     updateLimits: new UpdateCardLimitsUseCase(uow, clock),
     updateStatus: new UpdateCardStatusUseCase(uow, clock),
-    delete: new DeleteVirtualCardUseCase(cards),
+    delete: new DeleteVirtualCardUseCase(uow),
     authorize: new ProcessCardTransactionUseCase(uow, clock),
   });
 

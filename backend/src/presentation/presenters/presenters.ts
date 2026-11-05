@@ -1,11 +1,13 @@
 import type { AuthorizePurchaseResult } from '../../application/dtos/AuthorizePurchaseDto';
+import type { CardFundingResult, RevealedCardDetailsDto } from '../../application/dtos/UpdateLimitsDto';
 import type { Account } from '../../domain/entities/Account';
 import type { AccountMovement } from '../../domain/entities/AccountMovement';
 import type { User } from '../../domain/entities/User';
 import type { VirtualCard } from '../../domain/entities/VirtualCard';
 
 /**
- * Formato JSON de la API. Se mantiene idéntico al que ya consume el frontend.
+ * Formato JSON de la API. Se mantiene compatible con el frontend e incorpora
+ * los campos de tokenización criptográfica y saldo prepago.
  */
 
 export const presentUser = (u: User) => ({
@@ -44,10 +46,13 @@ export const presentCard = (c: VirtualCard) => {
   const rules = c.rules;
   return {
     id: c.id,
+    cardToken: c.cardToken,
+    last4: c.last4,
     maskedNumber: c.maskedNumber,
     cardholderName: c.cardholderName,
     expirationDate: c.expirationDate,
-    cvv: c.cvv,
+    prepaidBalance: c.prepaidBalance,
+    autoDebitFromAccount: rules.autoDebitFromAccount,
     monthlyLimit: rules.monthlyLimit,
     dailyLimit: rules.dailyLimit,
     currentSpending: c.currentSpending,
@@ -59,6 +64,22 @@ export const presentCard = (c: VirtualCard) => {
   };
 };
 
+export const presentRevealedCard = (details: RevealedCardDetailsDto) => ({
+  cardId: details.cardId,
+  cardToken: details.cardToken,
+  cardNumber: details.cardNumber,
+  cvv: details.cvv,
+  expirationDate: details.expirationDate,
+  cardholderName: details.cardholderName,
+});
+
+export const presentCardFunding = (result: CardFundingResult) => ({
+  amount: result.amount,
+  accountBalance: result.accountBalance,
+  prepaidBalance: result.card.prepaidBalance,
+  card: presentCard(result.card),
+});
+
 export const presentPurchase = (result: AuthorizePurchaseResult) => {
   if (!result.approved) return { approved: false, reason: result.reason };
   return {
@@ -68,6 +89,7 @@ export const presentPurchase = (result: AuthorizePurchaseResult) => {
     merchantName: result.merchantName,
     category: result.category,
     newBalance: result.newBalance,
+    prepaidBalance: result.card.prepaidBalance,
     currentSpending: result.card.currentSpending,
     card: presentCard(result.card),
   };

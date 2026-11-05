@@ -1,27 +1,51 @@
 // src/types/cards.ts
+import type { SpendingCategoryId } from '@/utils/spendingCategories';
+
 export type CardStatus = 'ACTIVE' | 'FROZEN' | 'CANCELLED';
-export type MerchantCategory = 'GAMBLING' | 'ENTERTAINMENT' | 'RESTAURANTS' | 'GROCERIES' | 'TRAVEL';
+export type MerchantCategory = SpendingCategoryId;
 
 export interface SpendingRules {
-    dailyLimit: number | null;
-    monthlyLimit: number | null;
-    internationalAllowed: boolean;
-    blockedCategories: MerchantCategory[];
+  dailyLimit: number | null;
+  monthlyLimit: number | null;
+  internationalAllowed: boolean;
+  blockedCategories: MerchantCategory[];
+  /** Si es true, cuando el saldo prepago no alcance se debita el faltante de la cuenta principal. */
+  autoDebitFromAccount: boolean;
 }
 
 export interface VirtualCard {
-    id: string;
-    walletId: string;
-    tokenizedPan: string; // Ej: "**** **** **** 1234"
-    expirationDate: string; // Formato MM/YY
-    cvv?: string; // Solo se recibe al solicitar revelar los datos (challenge)
-    cardholderName?: string;
-    status: CardStatus;
-    spendingRules: SpendingRules;
-    issuedAt: string;
+  id: string;
+  walletId: string;
+  /** Token criptográfico único (ej. "tok_np_8f3a91c4...") */
+  cardToken: string;
+  /** Últimos 4 dígitos del PAN */
+  last4: string;
+  /** PAN enmascarado: "**** **** **** 1234" */
+  tokenizedPan: string;
+  /** Formato MM/YY */
+  expirationDate: string;
+  /** Solo se recibe temporalmente al solicitar revelar los datos (/cards/:id/reveal) */
+  cvv?: string;
+  cardholderName?: string;
+  /** Saldo prepago cargado en la tarjeta */
+  prepaidBalance: number;
+  currentSpending?: number;
+  status: CardStatus;
+  spendingRules: SpendingRules;
+  issuedAt: string;
+}
+
+export interface RevealedCardDetails {
+  cardId: string;
+  cardToken: string;
+  cardNumber: string;
+  cvv: string;
+  expirationDate: string;
+  cardholderName: string;
 }
 
 export interface CreateCardDTO {
-    walletId: string;
-    initialRules?: Partial<SpendingRules>;
+  walletId: string;
+  initialBalance?: number;
+  initialRules?: Partial<SpendingRules>;
 }
