@@ -1,4 +1,4 @@
-import { ValidationError } from '../errors/DomainError';
+import { BusinessRuleError, ValidationError } from '../errors/DomainError';
 import { Money, roundMoney } from '../value-objects/Money';
 import { parseSpendingCategoryList, type SpendingCategory } from '../value-objects/SpendingCategory';
 
@@ -12,16 +12,26 @@ export interface SpendingRules {
   dailyLimit: number | null;
   internationalAllowed: boolean;
   blockedCategories: SpendingCategory[];
+  /** Si es true, cuando el saldo prepago no alcance se debita el faltante de la cuenta principal. */
+  autoDebitFromAccount: boolean;
 }
 
 export interface VirtualCardProps {
   id: string;
   userId: string;
-  cardNumber: string;
+  /** Token criptográfico único que identifica la tarjeta (ej. tok_np_...). */
+  cardToken: string;
+  /** Últimos 4 dígitos del PAN (ej. 1234). */
+  last4: string;
+  /** PAN sellado en la bóveda criptográfica (AES-256-GCM). */
+  encryptedPan: string;
+  /** CVV sellado en la bóveda criptográfica (AES-256-GCM). */
+  encryptedCvv: string;
   cardholderName: string;
   expirationDate: string;
-  cvv: string;
   status: CardStatus;
+  /** Saldo prepago cargado en la tarjeta. */
+  prepaidBalance: number;
   rules: SpendingRules;
   /** Gasto acumulado dentro de spendingPeriod. */
   currentSpending: number;
@@ -37,6 +47,7 @@ export interface SpendingRulesInput {
   dailyLimit: number | null;
   internationalAllowed: boolean;
   blockedCategories: string[];
+  autoDebitFromAccount?: boolean;
 }
 
 export interface PurchaseAttempt {
@@ -58,12 +69,15 @@ const reject = (reason: string): PurchaseDecision => ({ approved: false, reason 
 export class VirtualCard {
   readonly id: string;
   readonly userId: string;
-  readonly cardNumber: string;
+  readonly cardToken: string;
+  readonly last4: string;
+  readonly encryptedPan: string;
+  readonly encryptedCvv: string;
   readonly cardholderName: string;
   readonly expirationDate: string;
-  readonly cvv: string;
   readonly createdAt: Date;
   private _status: CardStatus;
+  private _prepaidBalance: number;
   private _rules: SpendingRules;
   private _currentSpending: number;
   private _spendingPeriod: string;
@@ -71,12 +85,15 @@ export class VirtualCard {
   constructor(props: VirtualCardProps) {
     this.id = props.id;
     this.userId = props.userId;
-    this.cardNumber = props.cardNumber;
+    this.cardToken = props.cardToken;
+    this.last4 = props.last4;
+    this.encryptedPan = props.encryptedPan;
+    this.encryptedCvv = props.encryptedCvv;
     this.cardholderName = props.cardholderName;
     this.expirationDate = props.expirationDate;
-    this.cvv = props.cvv;
     this.createdAt = props.createdAt;
     this._status = props.status;
+    this._prepaidBalance = roundMoney(props.prepaidBalance);
     this._rules = { ...props.rules, blockedCategories: [...props.rules.blockedCategories] };
     this._currentSpending = props.currentSpending;
     this._spendingPeriod = props.spendingPeriod;
@@ -84,6 +101,10 @@ export class VirtualCard {
 
   get status(): CardStatus {
     return this._status;
+  }
+
+  get prepaidBalance(): number {
+    return this._prepaidBalance;
   }
 
   get rules(): SpendingRules {
@@ -99,7 +120,7 @@ export class VirtualCard {
   }
 
   get maskedNumber(): string {
-    return `**** **** **** ${this.cardNumber.slice(-4)}`;
+    return `**** **** **** ${this.last4}`;
   }
 
   get hasDailyLimit(): boolean {
@@ -121,6 +142,7 @@ export class VirtualCard {
       dailyLimit: input.dailyLimit === null ? null : Money.spendingLimit(input.dailyLimit, 'Límite diario'),
       internationalAllowed: input.internationalAllowed,
       blockedCategories: parseSpendingCategoryList(input.blockedCategories),
+      autoDebitFromAccount: input.autoDebitFromAccount ?? false,
     };
   }
 
@@ -147,7 +169,33 @@ export class VirtualCard {
   }
 
   changeStatus(status: CardStatus): void {
+    if (this._status === 'CANCELLED' && status !== 'CANCELLED') {
+      throw new BusinessRuleError('Una tarjeta cancelada no puede reactivarse');
+    }
     this._status = status;
+  }
+
+  /** Carga saldo prepago en la tarjeta. */
+  topUp(amount: number): void {
+    if (this._status === 'CANCELLED') {
+      throw new BusinessRuleError('No se puede recargar una tarjeta cancelada');
+    }
+    this._prepaidBalance = roundMoney(this._prepaidBalance + amount);
+  }
+
+  /** Descarga saldo prepago de la tarjeta para devolverlo a la cuenta principal. */
+  unload(amount: number): void {
+    if (this._prepaidBalance < amount) {
+      throw new BusinessRuleError(`Saldo prepago insuficiente en la tarjeta (disponible: $${this._prepaidBalance.toFixed(2)})`);
+    }
+    this._prepaidBalance = roundMoney(this._prepaidBalance - amount);
+  }
+
+  /** Extrae todo el saldo prepago remanente (p. ej. al cancelar o eliminar la tarjeta). */
+  drainPrepaidBalance(): number {
+    const remaining = this._prepaidBalance;
+    this._prepaidBalance = 0;
+    return remaining;
   }
 
   /**
@@ -163,7 +211,7 @@ export class VirtualCard {
 
   /** Aplica las reglas de la tarjeta a una compra, en orden. No modifica el estado. */
   evaluatePurchase(attempt: PurchaseAttempt): PurchaseDecision {
-    const { monthlyLimit, dailyLimit, internationalAllowed, blockedCategories } = this._rules;
+    const { monthlyLimit, dailyLimit, internationalAllowed, blockedCategories, autoDebitFromAccount } = this._rules;
 
     if (this._status === 'CANCELLED') return reject('Tarjeta cancelada');
     if (this._status === 'FROZEN') return reject('Tarjeta congelada');
@@ -179,15 +227,42 @@ export class VirtualCard {
     if (this.hasDailyLimit && dailyLimit !== null && roundMoney(attempt.spentToday + attempt.amount) > dailyLimit) {
       return reject(`Límite diario superado ($${dailyLimit.toFixed(2)})`);
     }
+    if (!autoDebitFromAccount && this._prepaidBalance < attempt.amount) {
+      return reject(
+        `Saldo prepago insuficiente en la tarjeta (disponible: $${this._prepaidBalance.toFixed(2)}). Recárgala o habilita el débito automático de cuenta`
+      );
+    }
     return { approved: true };
   }
 
-  registerPurchase(amount: number): void {
+  /** Calcula cuánto se cubre con el saldo prepago de la tarjeta y cuánto debe cubrir la cuenta principal. */
+  splitPayment(amount: number): { fromPrepaid: number; fromAccount: number } {
+    const fromPrepaid = roundMoney(Math.min(this._prepaidBalance, amount));
+    const fromAccount = roundMoney(amount - fromPrepaid);
+    return { fromPrepaid, fromAccount };
+  }
+
+  registerPurchase(amount: number, fromPrepaid: number = 0): void {
+    if (fromPrepaid > 0) {
+      this._prepaidBalance = roundMoney(Math.max(0, this._prepaidBalance - fromPrepaid));
+    }
     this._currentSpending = roundMoney(this._currentSpending + amount);
   }
 
   /** Descripción del movimiento de pago (el frontend la interpreta: "Pago: <comercio> [<id>]"). */
   paymentDescription(merchantName: string): string {
     return `Pago: ${merchantName} [${this.id}]`;
+  }
+
+  topUpDescription(): string {
+    return `Recarga tarjeta prepago •••• ${this.last4}`;
+  }
+
+  unloadDescription(): string {
+    return `Descarga tarjeta prepago •••• ${this.last4}`;
+  }
+
+  refundOnCloseDescription(): string {
+    return `Reembolso cierre tarjeta prepago •••• ${this.last4}`;
   }
 }

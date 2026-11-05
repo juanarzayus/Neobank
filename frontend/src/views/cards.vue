@@ -4,14 +4,14 @@
     <!-- ===== HEADER ===== -->
     <section class="cards-header">
       <div class="cards-header__text">
-        <h1 class="cards-header__title">Tarjetas Virtuales</h1>
-        <p class="cards-header__sub">Emisión de tarjetas virtuales y control de límites por categoría.</p>
+        <h1 class="cards-header__title">Tarjetas Prepago Tokenizadas</h1>
+        <p class="cards-header__sub">Emisión con token criptográfico (AES-256 / Luhn), saldo prepago recargable y control de límites por categoría.</p>
       </div>
       <button class="btn-issue" @click="openIssueModal" id="btn-issue-card">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M12 5v14M5 12h14" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-        Emitir tarjeta
+        Emitir tarjeta prepago
       </button>
     </section>
 
@@ -44,12 +44,12 @@
       <div class="mini-stat">
         <div class="mini-stat__icon mini-stat__icon--blue">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
-            <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z" />
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </div>
         <div class="mini-stat__info">
-          <span class="mini-stat__label">Congeladas</span>
-          <span class="mini-stat__value">{{ frozenCount }}</span>
+          <span class="mini-stat__label">Saldo prepago total</span>
+          <span class="mini-stat__value">${{ formatAmount(totalPrepaidBalance) }}</span>
         </div>
       </div>
       <div class="mini-stat">
@@ -71,7 +71,7 @@
       <!-- LEFT: Card showcase -->
       <div class="showcase-panel">
         <div class="panel-head">
-          <h2 class="panel-head__title">Mis Tarjetas</h2>
+          <h2 class="panel-head__title">Mis Tarjetas Prepago</h2>
           <div class="filter-tabs">
             <button
               v-for="tab in filterTabs"
@@ -91,9 +91,9 @@
         <!-- Empty state -->
         <div v-else-if="filteredCards.length === 0" class="empty-state">
           <div class="empty-state__icon">💳</div>
-          <p class="empty-state__title">{{ cards.length === 0 ? 'Sin tarjetas virtuales' : 'No hay tarjetas con este filtro' }}</p>
+          <p class="empty-state__title">{{ cards.length === 0 ? 'Sin tarjetas prepago' : 'No hay tarjetas con este filtro' }}</p>
           <p class="empty-state__text">
-            {{ cards.length === 0 ? 'No tienes tarjetas emitidas aún. Crea una desde cero con tus propios límites.' : 'Prueba cambiando de pestaña para ver otras tarjetas.' }}
+            {{ cards.length === 0 ? 'No tienes tarjetas prepago tokenizadas aún. Crea una con su propio saldo o vinculada a tu cuenta.' : 'Prueba cambiando de pestaña para ver otras tarjetas.' }}
           </p>
           <button v-if="cards.length === 0" class="btn-issue btn-issue--sm" @click="openIssueModal" id="btn-issue-first">
             Emitir primera tarjeta
@@ -122,22 +122,32 @@
             </div>
 
             <div class="vcard__top">
-              <img :src="logo" alt="NOVA" class="vcard__logo" />
+              <div class="vcard__brand-group">
+                <img :src="logo" alt="NOVA" class="vcard__logo" />
+                <span class="vcard__token-pill" :title="`Token: ${card.cardToken}`">
+                  🔒 {{ formatShortToken(card.cardToken) }}
+                </span>
+              </div>
               <span class="vcard__badge" :class="`vcard__badge--${card.status.toLowerCase()}`">
                 {{ statusLabel(card.status) }}
               </span>
             </div>
-            <div class="vcard__pan">{{ card.tokenizedPan }}</div>
+            <div class="vcard__pan">
+              {{ isCardRevealed(card.id) ? formatFullPan(revealedDetails!.cardNumber) : card.tokenizedPan }}
+            </div>
             <div class="vcard__holder" v-if="card.cardholderName">{{ card.cardholderName }}</div>
             <div class="vcard__bottom">
               <div class="vcard__field">
-                <span class="vcard__field-label">Vence</span>
-                <span class="vcard__field-value">{{ card.expirationDate }}</span>
+                <span class="vcard__field-label">Saldo Prepago</span>
+                <span class="vcard__field-value vcard__field-value--accent">
+                  ${{ formatAmount(card.prepaidBalance) }}
+                  <small v-if="card.spendingRules.autoDebitFromAccount" class="vcard__funding-tag">+ Cuenta</small>
+                </span>
               </div>
               <div class="vcard__field">
-                <span class="vcard__field-label">Límite mensual</span>
+                <span class="vcard__field-label">Vence / CVV</span>
                 <span class="vcard__field-value">
-                  {{ card.spendingRules.monthlyLimit ? '$' + card.spendingRules.monthlyLimit.toLocaleString(numberLocale) : (card.spendingRules.dailyLimit ? '$' + card.spendingRules.dailyLimit.toLocaleString(numberLocale) + '/d' : 'Sin límite') }}
+                  {{ card.expirationDate }} · {{ isCardRevealed(card.id) ? revealedDetails!.cvv : '•••' }}
                 </span>
               </div>
               <div class="vcard__chip">
@@ -158,9 +168,9 @@
               <path d="M2 10h20" /><path d="M6 15h4" stroke-linecap="round" />
             </svg>
           </div>
-          <p class="detail-empty__title">{{ cards.length === 0 ? 'Panel de Tarjetas' : 'Selecciona una tarjeta' }}</p>
+          <p class="detail-empty__title">{{ cards.length === 0 ? 'Panel de Tarjetas Prepago' : 'Selecciona una tarjeta' }}</p>
           <p class="detail-empty__text">
-            {{ cards.length === 0 ? 'Aquí podrás administrar los límites, compras y seguridad de tu tarjeta una vez que la emitas.' : 'Haz clic en una tarjeta de la lista para ver sus detalles.' }}
+            {{ cards.length === 0 ? 'Aquí podrás administrar el saldo prepago, token criptográfico, límites y seguridad de tu tarjeta.' : 'Haz clic en una tarjeta de la lista para ver sus detalles.' }}
           </p>
           <button v-if="cards.length === 0" class="btn-issue btn-issue--sm" @click="openIssueModal">
             Emitir tarjeta ahora
@@ -173,15 +183,83 @@
           <div class="detail-header">
             <div class="detail-header__info">
               <h3 class="detail-header__title">{{ selectedCard.cardholderName || 'Detalles de Tarjeta' }}</h3>
-              <span class="detail-header__pan">{{ selectedCard.tokenizedPan }}</span>
+              <span class="detail-header__pan">
+                {{ isCardRevealed(selectedCard.id) ? formatFullPan(revealedDetails!.cardNumber) : selectedCard.tokenizedPan }}
+              </span>
             </div>
             <span class="detail-header__badge" :class="`detail-header__badge--${selectedCard.status.toLowerCase()}`">
               {{ statusLabel(selectedCard.status) }}
             </span>
           </div>
 
+          <!-- Prepaid Balance Banner -->
+          <div class="prepaid-banner">
+            <div class="prepaid-banner__main">
+              <div>
+                <span class="prepaid-banner__label">Saldo prepago cargado</span>
+                <div class="prepaid-banner__amount">${{ formatAmount(selectedCard.prepaidBalance) }}</div>
+              </div>
+              <span
+                class="prepaid-banner__mode"
+                :class="selectedCard.spendingRules.autoDebitFromAccount ? 'prepaid-banner__mode--auto' : 'prepaid-banner__mode--strict'"
+              >
+                {{ selectedCard.spendingRules.autoDebitFromAccount ? '⚡ Prepago + Respaldo de Cuenta' : '🛡️ Prepago aislado' }}
+              </span>
+            </div>
+            <div v-if="selectedCard.status !== 'CANCELLED'" class="prepaid-banner__actions">
+              <button
+                type="button"
+                class="prepaid-btn prepaid-btn--topup"
+                @click="openFundingModal(selectedCard, 'TOPUP')"
+                id="btn-topup-card"
+              >
+                + Recargar saldo
+              </button>
+              <button
+                type="button"
+                class="prepaid-btn prepaid-btn--unload"
+                :disabled="selectedCard.prepaidBalance <= 0"
+                @click="openFundingModal(selectedCard, 'UNLOAD')"
+                id="btn-unload-card"
+              >
+                ↓ Descargar a cuenta
+              </button>
+            </div>
+          </div>
+
+          <!-- Revealed sensitive credentials banner -->
+          <div v-if="isCardRevealed(selectedCard.id)" class="revealed-banner">
+            <div class="revealed-banner__grid">
+              <div>
+                <span class="revealed-banner__label">PAN destokenizado (Luhn)</span>
+                <strong class="revealed-banner__val">{{ formatFullPan(revealedDetails!.cardNumber) }}</strong>
+              </div>
+              <div>
+                <span class="revealed-banner__label">CVV</span>
+                <strong class="revealed-banner__val">{{ revealedDetails!.cvv }}</strong>
+              </div>
+              <div>
+                <span class="revealed-banner__label">Ocultando en</span>
+                <strong class="revealed-banner__timer">{{ revealCountdown }}s</strong>
+              </div>
+            </div>
+          </div>
+
           <!-- Quick actions -->
           <div class="quick-actions">
+            <button
+              type="button"
+              class="action-btn action-btn--reveal"
+              :disabled="revealing"
+              @click="toggleRevealCard(selectedCard)"
+              id="btn-reveal-card"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              {{ isCardRevealed(selectedCard.id) ? 'Ocultar PAN/CVV' : (revealing ? 'Destokenizando...' : 'Revelar PAN/CVV') }}
+            </button>
             <button
               v-if="selectedCard.status === 'ACTIVE'"
               class="action-btn action-btn--freeze"
@@ -214,7 +292,7 @@
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
               </svg>
-              Límites
+              Límites y fondeo
             </button>
             <button
               v-if="selectedCard.status === 'ACTIVE'"
@@ -254,7 +332,7 @@
 
           <!-- Spending rules info -->
           <div class="rules-panel">
-            <h4 class="rules-panel__title">Reglas de gasto</h4>
+            <h4 class="rules-panel__title">Reglas de gasto y fondeo</h4>
             <div class="rules-grid">
               <div class="rule-item">
                 <span class="rule-item__label">Límite diario</span>
@@ -274,13 +352,43 @@
                   {{ selectedCard.spendingRules.internationalAllowed ? 'Permitido' : 'Bloqueado' }}
                 </span>
               </div>
+              <div class="rule-item">
+                <span class="rule-item__label">Débito de cuenta</span>
+                <span class="rule-item__value" :class="selectedCard.spendingRules.autoDebitFromAccount ? 'rule-item__value--ok' : ''">
+                  {{ selectedCard.spendingRules.autoDebitFromAccount ? 'Habilitado' : 'Solo saldo prepago' }}
+                </span>
+              </div>
+              <div class="rule-item rule-item--wide">
+                <span class="rule-item__label">Categorías bloqueadas</span>
+                <span class="rule-item__value" v-if="selectedCard.spendingRules.blockedCategories.length === 0">
+                  Ninguna
+                </span>
+                <div v-else class="blocked-tags">
+                  <span v-for="catId in selectedCard.spendingRules.blockedCategories" :key="catId" class="blocked-tag">
+                    {{ getCategoryById(catId)?.icon }} {{ getCategoryById(catId)?.label || catId }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Card info -->
+          <!-- Card info & Token Vault metadata -->
           <div class="info-panel">
-            <h4 class="info-panel__title">Información</h4>
+            <h4 class="info-panel__title">Tokenización y Seguridad</h4>
             <div class="info-rows">
+              <div class="info-row">
+                <span class="info-row__label">Token de tarjeta</span>
+                <span class="info-row__value info-row__value--token">
+                  {{ selectedCard.cardToken }}
+                  <button type="button" class="token-copy-btn" @click="copyToken(selectedCard.cardToken)" title="Copiar token">
+                    Copiar
+                  </button>
+                </span>
+              </div>
+              <div class="info-row">
+                <span class="info-row__label">Cifrado en bóveda</span>
+                <span class="info-row__value">AES-256-GCM · Luhn Check</span>
+              </div>
               <div class="info-row" v-if="selectedCard.cardholderName">
                 <span class="info-row__label">Titular</span>
                 <span class="info-row__value">{{ selectedCard.cardholderName }}</span>
@@ -288,10 +396,6 @@
               <div class="info-row">
                 <span class="info-row__label">ID de tarjeta</span>
                 <span class="info-row__value">{{ selectedCard.id }}</span>
-              </div>
-              <div class="info-row">
-                <span class="info-row__label">Wallet</span>
-                <span class="info-row__value">{{ selectedCard.walletId }}</span>
               </div>
               <div class="info-row">
                 <span class="info-row__label">Emitida</span>
@@ -353,8 +457,8 @@
                 </svg>
               </div>
               <div>
-                <h3 class="modal-title">Emitir nueva tarjeta</h3>
-                <p class="modal-subtitle">Se creará una tarjeta virtual vinculada a tu billetera</p>
+                <h3 class="modal-title">Emitir tarjeta prepago tokenizada</h3>
+                <p class="modal-subtitle">Se generará un token criptográfico único y PAN sellado en bóveda</p>
               </div>
             </div>
             <button class="modal-close-btn" @click="issueModalOpen = false">
@@ -376,13 +480,38 @@
                 required
               />
             </div>
-            <div class="form-group">
-              <label class="form-label" for="issue-monthly">Límite mensual (USD)</label>
-              <input id="issue-monthly" :value="issueForm.monthlyLimit" @input="issueForm.monthlyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Ej: 3,000.00" />
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label" for="issue-initial-balance">Carga inicial prepago (USD)</label>
+                <input
+                  id="issue-initial-balance"
+                  :value="issueForm.initialBalance"
+                  @input="issueForm.initialBalance = onMoneyInput($event)"
+                  type="text"
+                  inputmode="decimal"
+                  class="form-input"
+                  placeholder="Ej: 100.00 (0 si vacío)"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="issue-monthly">Límite mensual (USD)</label>
+                <input id="issue-monthly" :value="issueForm.monthlyLimit" @input="issueForm.monthlyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Ej: 3,000.00" />
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label" for="issue-daily">Límite diario (USD, opcional)</label>
               <input id="issue-daily" :value="issueForm.dailyLimit" @input="issueForm.dailyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Ej: 500.00" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Sacar directamente de la cuenta principal</label>
+              <div class="toggle-row">
+                <button type="button" class="toggle-btn" :class="{ 'toggle-btn--on': issueForm.autoDebitFromAccount }" @click="issueForm.autoDebitFromAccount = !issueForm.autoDebitFromAccount">
+                  <span class="toggle-btn__dot"></span>
+                </button>
+                <span class="toggle-label">
+                  {{ issueForm.autoDebitFromAccount ? 'Habilitado (usa la cuenta si el prepago no alcanza)' : 'Deshabilitado (solo gasta el saldo prepago cargado)' }}
+                </span>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label">Compras internacionales</label>
@@ -391,6 +520,21 @@
                   <span class="toggle-btn__dot"></span>
                 </button>
                 <span class="toggle-label">{{ issueForm.internationalAllowed ? 'Permitidas' : 'Bloqueadas' }}</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Bloquear categorías de comercio (opcional)</label>
+              <div class="category-chips">
+                <button
+                  v-for="cat in CARD_SPENDING_CATEGORIES"
+                  :key="cat.id"
+                  type="button"
+                  class="category-chip"
+                  :class="{ 'category-chip--blocked': issueForm.blockedCategories.includes(cat.id) }"
+                  @click="toggleBlockedCategory(issueForm.blockedCategories, cat.id)"
+                >
+                  {{ cat.icon }} {{ cat.label }}
+                </button>
               </div>
             </div>
 
@@ -416,7 +560,7 @@
       </div>
     </transition>
 
-    <!-- ===== LIMITS MODAL ===== -->
+    <!-- ===== LIMITS & FUNDING MODAL ===== -->
     <transition name="modal-fade">
       <div v-if="limitsModalOpen" class="modal-overlay" @click.self="limitsModalOpen = false">
         <div class="modal-card">
@@ -429,7 +573,7 @@
                 </svg>
               </div>
               <div>
-                <h3 class="modal-title">Control de límites</h3>
+                <h3 class="modal-title">Control de límites y fondeo</h3>
                 <p class="modal-subtitle">Tarjeta {{ limitsForm.pan }}</p>
               </div>
             </div>
@@ -441,13 +585,26 @@
           </div>
 
           <form @submit.prevent="saveLimits" class="modal-form">
-            <div class="form-group">
-              <label class="form-label" for="limit-daily">Límite diario (USD)</label>
-              <input id="limit-daily" :value="limitsForm.dailyLimit" @input="limitsForm.dailyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Sin límite si vacío" />
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label" for="limit-daily">Límite diario (USD)</label>
+                <input id="limit-daily" :value="limitsForm.dailyLimit" @input="limitsForm.dailyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Sin límite si vacío" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="limit-monthly">Límite mensual (USD)</label>
+                <input id="limit-monthly" :value="limitsForm.monthlyLimit" @input="limitsForm.monthlyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Sin límite si vacío" />
+              </div>
             </div>
             <div class="form-group">
-              <label class="form-label" for="limit-monthly">Límite mensual (USD)</label>
-              <input id="limit-monthly" :value="limitsForm.monthlyLimit" @input="limitsForm.monthlyLimit = onMoneyInput($event)" type="text" inputmode="decimal" class="form-input" placeholder="Sin límite si vacío" />
+              <label class="form-label">Sacar directamente de la cuenta principal</label>
+              <div class="toggle-row">
+                <button type="button" class="toggle-btn" :class="{ 'toggle-btn--on': limitsForm.autoDebitFromAccount }" @click="limitsForm.autoDebitFromAccount = !limitsForm.autoDebitFromAccount">
+                  <span class="toggle-btn__dot"></span>
+                </button>
+                <span class="toggle-label">
+                  {{ limitsForm.autoDebitFromAccount ? 'Habilitado (usa cuenta si el prepago no alcanza)' : 'Deshabilitado (solo saldo prepago cargado)' }}
+                </span>
+              </div>
             </div>
             <div class="form-group">
               <label class="form-label">Compras internacionales</label>
@@ -456,6 +613,21 @@
                   <span class="toggle-btn__dot"></span>
                 </button>
                 <span class="toggle-label">{{ limitsForm.internationalAllowed ? 'Permitidas' : 'Bloqueadas' }}</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Categorías bloqueadas</label>
+              <div class="category-chips">
+                <button
+                  v-for="cat in CARD_SPENDING_CATEGORIES"
+                  :key="cat.id"
+                  type="button"
+                  class="category-chip"
+                  :class="{ 'category-chip--blocked': limitsForm.blockedCategories.includes(cat.id) }"
+                  @click="toggleBlockedCategory(limitsForm.blockedCategories, cat.id)"
+                >
+                  {{ cat.icon }} {{ cat.label }}
+                </button>
               </div>
             </div>
 
@@ -475,6 +647,65 @@
       </div>
     </transition>
 
+    <!-- ===== TOP-UP / UNLOAD MODAL ===== -->
+    <transition name="modal-fade">
+      <div v-if="fundingModalOpen" class="modal-overlay" @click.self="fundingModalOpen = false">
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title-group">
+              <div class="modal-icon-wrap modal-icon-wrap--green">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </div>
+              <div>
+                <h3 class="modal-title">
+                  {{ fundingForm.mode === 'TOPUP' ? 'Recargar tarjeta prepago' : 'Descargar saldo a cuenta principal' }}
+                </h3>
+                <p class="modal-subtitle">
+                  {{ fundingCard?.tokenizedPan }} · Disponible en tarjeta: ${{ formatAmount(fundingCard?.prepaidBalance ?? 0) }}
+                </p>
+              </div>
+            </div>
+            <button class="modal-close-btn" @click="fundingModalOpen = false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <form @submit.prevent="submitFunding" class="modal-form">
+            <div class="form-group">
+              <label class="form-label" for="funding-amount">
+                {{ fundingForm.mode === 'TOPUP' ? 'Monto a recargar desde tu cuenta principal (USD) *' : 'Monto a devolver a tu cuenta principal (USD) *' }}
+              </label>
+              <input
+                id="funding-amount"
+                :value="fundingForm.amount"
+                @input="fundingForm.amount = onMoneyInput($event)"
+                type="text"
+                inputmode="decimal"
+                class="form-input"
+                placeholder="Ej: 150.00"
+                required
+              />
+            </div>
+
+            <div v-if="fundingErrorMsg" class="form-error">
+              <span>{{ fundingErrorMsg }}</span>
+            </div>
+
+            <div class="modal-actions">
+              <button type="button" class="btn btn--secondary" @click="fundingModalOpen = false">Cancelar</button>
+              <button type="submit" class="btn btn--primary" :disabled="fundingLoading">
+                {{ fundingLoading ? 'Procesando...' : (fundingForm.mode === 'TOPUP' ? 'Confirmar recarga' : 'Confirmar descarga') }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </transition>
+
     <!-- ===== SIMULATE MODAL ===== -->
     <transition name="modal-fade">
       <div v-if="simulateModalOpen" class="modal-overlay" @click.self="closeSimulateModal">
@@ -488,7 +719,9 @@
               </div>
               <div>
                 <h3 class="modal-title">Simular compra</h3>
-                <p class="modal-subtitle">{{ simulateCard?.tokenizedPan }}</p>
+                <p class="modal-subtitle">
+                  {{ simulateCard?.tokenizedPan }} · Prepago: ${{ formatAmount(simulateCard?.prepaidBalance ?? 0) }}
+                </p>
               </div>
             </div>
             <button class="modal-close-btn" @click="closeSimulateModal">
@@ -505,8 +738,11 @@
             <div>
               <strong>{{ simulateResult.approved ? '✅ APROBADA' : '❌ RECHAZADA' }}</strong>
               <p>{{ simulateResult.reason }}</p>
+              <p v-if="simulateResult.approved && simulateResult.prepaidBalance !== undefined">
+                Saldo prepago en tarjeta: ${{ formatAmount(simulateResult.prepaidBalance) }}
+              </p>
               <p v-if="simulateResult.approved && simulateResult.newBalance !== undefined">
-                Nuevo saldo: ${{ formatAmount(simulateResult.newBalance) }}
+                Saldo en cuenta principal: ${{ formatAmount(simulateResult.newBalance) }}
               </p>
             </div>
           </div>
@@ -519,7 +755,7 @@
                 v-model="simulateForm.merchantName"
                 type="text"
                 class="form-input"
-                placeholder="Ej: Amazon, Netflix, Casino Royale"
+                placeholder="Ej: Amazon, Netflix, Uber"
                 required
               />
             </div>
@@ -533,8 +769,6 @@
                 inputmode="decimal"
                 class="form-input"
                 placeholder="Ej: 200.00"
-
-
                 required
               />
             </div>
@@ -589,13 +823,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive, watch } from 'vue';
-import type { VirtualCard, MerchantCategory } from '@/types/cards';
+import { ref, computed, onMounted, onBeforeUnmount, reactive, watch } from 'vue';
+import type { VirtualCard, MerchantCategory, RevealedCardDetails } from '@/types/cards';
 import type { Transaction } from '@/types/transactions';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/authStore';
 import logo from '@/assets/LOGONOVA.png';
 import { accountService } from '@/services/accountService';
+import { copyToClipboard } from '@/utils/accountNumber';
 import { numberLocale, formatAmount, formatMoneyInput, parseMoney } from '@/utils/numberFormat';
 import { pushNotification } from '@/utils/notifications';
 import {
@@ -626,28 +861,46 @@ const filterTabs = [
   { label: 'Canceladas', value: 'CANCELLED' },
 ];
 
+// Generate Luhn-valid PAN for local fallback
+const generateLocalLuhnPan = (last4: string): string => {
+  const prefix = '453201' + String(Math.floor(100000 + Math.random() * 900000)).slice(0, 5) + last4;
+  return prefix.slice(0, 16);
+};
+
 // Normalizer for backend / local cards
 const normalizeCard = (c: any): VirtualCard => {
-  const pan = c.tokenizedPan || c.maskedNumber || ('**** **** **** ' + (c.id ? String(c.id).slice(-4) : '7788'));
+  const last4 = String(c.last4 || (c.maskedNumber || c.tokenizedPan || c.id || '7788')).slice(-4);
+  const pan = c.tokenizedPan || c.maskedNumber || `**** **** **** ${last4}`;
+  const token = c.cardToken || c.card_token || `tok_np_${String(c.id || Date.now()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)}`;
   const exp = c.expirationDate || c.expiration_date || '12/28';
   const monthly = c.spendingRules?.monthlyLimit ?? (typeof c.monthlyLimit === 'number' ? c.monthlyLimit : null);
   const daily = c.spendingRules?.dailyLimit ?? (typeof c.dailyLimit === 'number' ? c.dailyLimit : null);
   const intl = c.spendingRules?.internationalAllowed ?? (c.internationalAllowed ?? c.international_allowed ?? true);
   const blocked = c.spendingRules?.blockedCategories ?? (c.blockedCategories ?? c.blocked_categories ?? []);
+  const autoDebit =
+    c.spendingRules?.autoDebitFromAccount ??
+    c.autoDebitFromAccount ??
+    c.auto_debit_from_account ??
+    false;
+  const prepaidBalance = Number(c.prepaidBalance ?? c.prepaid_balance ?? 0);
 
   return {
     id: String(c.id),
     walletId: c.walletId || 'w1',
+    cardToken: token,
+    last4,
     tokenizedPan: pan,
     cardholderName: c.cardholderName || c.cardholder_name || (authStore.user ? `${authStore.user.firstName} ${authStore.user.lastName}`.trim().toUpperCase() : 'TITULAR'),
     expirationDate: exp,
-    cvv: c.cvv,
+    prepaidBalance,
+    currentSpending: Number(c.currentSpending ?? 0),
     status: c.status || 'ACTIVE',
     spendingRules: {
       dailyLimit: daily,
       monthlyLimit: monthly,
       internationalAllowed: intl,
       blockedCategories: blocked,
+      autoDebitFromAccount: Boolean(autoDebit),
     },
     issuedAt: c.issuedAt || c.createdAt || new Date().toISOString(),
   };
@@ -685,7 +938,9 @@ const filteredCards = computed(() => {
 });
 
 const activeCount = computed(() => cards.value.filter(c => c.status === 'ACTIVE').length);
-const frozenCount = computed(() => cards.value.filter(c => c.status === 'FROZEN').length);
+const totalPrepaidBalance = computed(() =>
+  cards.value.reduce((sum, c) => sum + (Number(c.prepaidBalance) || 0), 0)
+);
 const monthlySpend = computed(() => {
   return transactions.value
     .filter(t => t.type === 'CARD_PAYMENT' && t.status === 'COMPLETED')
@@ -699,6 +954,73 @@ const cardTransactions = computed(() => {
     .slice(0, 5);
 });
 
+// Reveal sensitive details state
+const revealedDetails = ref<RevealedCardDetails | null>(null);
+const revealing = ref(false);
+const revealCountdown = ref(0);
+let revealTimer: ReturnType<typeof setInterval> | null = null;
+
+const clearRevealTimer = () => {
+  if (revealTimer) {
+    clearInterval(revealTimer);
+    revealTimer = null;
+  }
+  revealedDetails.value = null;
+  revealCountdown.value = 0;
+};
+
+onBeforeUnmount(clearRevealTimer);
+
+const isCardRevealed = (cardId: string) =>
+  revealedDetails.value !== null && revealedDetails.value.cardId === cardId;
+
+const formatFullPan = (pan: string) =>
+  pan.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim();
+
+const formatShortToken = (token: string) =>
+  token.length > 16 ? `${token.slice(0, 12)}…${token.slice(-4)}` : token;
+
+const toggleRevealCard = async (card: VirtualCard) => {
+  if (isCardRevealed(card.id)) {
+    clearRevealTimer();
+    return;
+  }
+  clearRevealTimer();
+  revealing.value = true;
+  try {
+    const res = await api.post<RevealedCardDetails>(`/cards/${card.id}/reveal`);
+    revealedDetails.value = res.data;
+  } catch {
+    revealedDetails.value = {
+      cardId: card.id,
+      cardToken: card.cardToken,
+      cardNumber: generateLocalLuhnPan(card.last4),
+      cvv: '842',
+      expirationDate: card.expirationDate,
+      cardholderName: card.cardholderName || 'TITULAR',
+    };
+  } finally {
+    revealing.value = false;
+  }
+
+  revealCountdown.value = 15;
+  revealTimer = setInterval(() => {
+    revealCountdown.value -= 1;
+    if (revealCountdown.value <= 0) {
+      clearRevealTimer();
+    }
+  }, 1000);
+};
+
+const copyToken = async (token: string) => {
+  const ok = await copyToClipboard(token);
+  pushNotification({
+    title: ok ? 'Token copiado' : 'Token de tarjeta',
+    message: ok ? `Se copió el token ${token} al portapapeles.` : token,
+    type: 'info',
+  });
+};
+
 // Issue modal state
 const issueModalOpen = ref(false);
 const issuing = ref(false);
@@ -706,9 +1028,11 @@ const issueSuccessMsg = ref('');
 const issueErrorMsg = ref('');
 const issueForm = reactive({
   cardholderName: '',
+  initialBalance: '' as string | number | null,
   dailyLimit: '' as string | number | null,
   monthlyLimit: '' as string | number | null,
   internationalAllowed: true,
+  autoDebitFromAccount: false,
   blockedCategories: [] as MerchantCategory[],
 });
 
@@ -721,14 +1045,25 @@ const limitsForm = reactive({
   dailyLimit: '' as string | number | null,
   monthlyLimit: '' as string | number | null,
   internationalAllowed: true,
+  autoDebitFromAccount: false,
   blockedCategories: [] as MerchantCategory[],
+});
+
+// Funding (TopUp / Unload) modal state
+const fundingModalOpen = ref(false);
+const fundingLoading = ref(false);
+const fundingErrorMsg = ref('');
+const fundingCard = ref<VirtualCard | null>(null);
+const fundingForm = reactive({
+  mode: 'TOPUP' as 'TOPUP' | 'UNLOAD',
+  amount: '' as string | number | null,
 });
 
 // Simulate modal state
 const simulateModalOpen = ref(false);
 const simulateCard = ref<VirtualCard | null>(null);
 const simulating = ref(false);
-const simulateResult = ref<{ approved: boolean; reason: string; newBalance?: number } | null>(null);
+const simulateResult = ref<{ approved: boolean; reason: string; newBalance?: number; prepaidBalance?: number } | null>(null);
 const simulateForm = reactive({
   merchantName: '',
   amount: '' as string | number | null,
@@ -742,6 +1077,11 @@ const onMoneyInput = (e: Event): string => {
   return (el.value = formatMoneyInput(el.value));
 };
 
+const toggleBlockedCategory = (list: MerchantCategory[], catId: MerchantCategory) => {
+  const idx = list.indexOf(catId);
+  if (idx >= 0) list.splice(idx, 1);
+  else list.push(catId);
+};
 
 const formatDate = (iso: string) => {
   if (!iso) return '';
@@ -772,9 +1112,11 @@ const openIssueModal = () => {
   issueErrorMsg.value = '';
   const fullName = [authStore.user?.firstName, authStore.user?.lastName].filter(Boolean).join(' ').toUpperCase();
   issueForm.cardholderName = fullName || '';
+  issueForm.initialBalance = null;
   issueForm.dailyLimit = null;
   issueForm.monthlyLimit = null;
   issueForm.internationalAllowed = true;
+  issueForm.autoDebitFromAccount = false;
   issueForm.blockedCategories = [];
   issueModalOpen.value = true;
 };
@@ -790,47 +1132,60 @@ const issueCard = async () => {
   issueSuccessMsg.value = '';
 
   const holder = issueForm.cardholderName.trim().toUpperCase();
+  const initBal = parseMoney(issueForm.initialBalance) ?? 0;
   const mLimit = parseMoney(issueForm.monthlyLimit) ?? 0;
   const dLimit = parseMoney(issueForm.dailyLimit);
 
   try {
     const resp = await api.post<any>('/cards', {
       cardholderName: holder,
+      initialBalance: initBal,
       monthlyLimit: mLimit,
       dailyLimit: dLimit,
       internationalAllowed: issueForm.internationalAllowed,
+      autoDebitFromAccount: issueForm.autoDebitFromAccount,
       blockedCategories: issueForm.blockedCategories,
     });
     const createdCard = normalizeCard(resp.data);
     cards.value.unshift(createdCard);
     selectedCard.value = createdCard;
     persistCards();
-    issueSuccessMsg.value = '¡Tarjeta emitida exitosamente!';
+    issueSuccessMsg.value = '¡Tarjeta prepago tokenizada emitida exitosamente!';
     pushNotification({
-      title: 'Tarjeta virtual emitida',
-      message: `Se emitió tu nueva tarjeta terminada en ${selectedCard.value?.tokenizedPan.slice(-4)}.`,
+      title: 'Tarjeta prepago tokenizada emitida',
+      message: `Se emitió tu tarjeta terminada en ${createdCard.last4} (${createdCard.cardToken.slice(0, 14)}…).`,
       type: 'success',
     });
-    setTimeout(() => { issueModalOpen.value = false; }, 1200);
-  } catch {
+    setTimeout(() => { issueModalOpen.value = false; }, 1100);
+  } catch (err: any) {
+    if (err?.response?.data?.message) {
+      issueErrorMsg.value = err.response.data.message;
+      issuing.value = false;
+      return;
+    }
     // Local creation fallback (works offline or without backend)
     const futureDate = new Date();
     futureDate.setFullYear(futureDate.getFullYear() + 4);
     const expMonth = String(futureDate.getMonth() + 1).padStart(2, '0');
     const expYear = String(futureDate.getFullYear()).slice(-2);
+    const last4 = String(Math.floor(1000 + Math.random() * 9000));
 
     const newCard: VirtualCard = {
       id: 'c_' + Date.now().toString(36),
       walletId: 'w1',
-      tokenizedPan: `**** **** **** ${Math.floor(1000 + Math.random() * 9000)}`,
+      cardToken: `tok_np_${Math.random().toString(16).slice(2, 14)}${Date.now().toString(16)}`,
+      last4,
+      tokenizedPan: `**** **** **** ${last4}`,
       cardholderName: holder,
       expirationDate: `${expMonth}/${expYear}`,
+      prepaidBalance: initBal,
       status: 'ACTIVE',
       spendingRules: {
         dailyLimit: dLimit,
         monthlyLimit: mLimit || null,
         internationalAllowed: issueForm.internationalAllowed,
         blockedCategories: [...issueForm.blockedCategories],
+        autoDebitFromAccount: issueForm.autoDebitFromAccount,
       },
       issuedAt: new Date().toISOString(),
     };
@@ -838,15 +1193,60 @@ const issueCard = async () => {
     cards.value.unshift(newCard);
     selectedCard.value = newCard;
     persistCards();
-    issueSuccessMsg.value = '¡Tarjeta emitida exitosamente!';
+    issueSuccessMsg.value = '¡Tarjeta prepago tokenizada emitida exitosamente!';
     pushNotification({
-      title: 'Tarjeta virtual emitida',
-      message: `Se emitió tu nueva tarjeta terminada en ${selectedCard.value?.tokenizedPan.slice(-4)}.`,
+      title: 'Tarjeta prepago tokenizada emitida',
+      message: `Se emitió tu nueva tarjeta terminada en ${newCard.last4}.`,
       type: 'success',
     });
-    setTimeout(() => { issueModalOpen.value = false; }, 1200);
+    setTimeout(() => { issueModalOpen.value = false; }, 1100);
   } finally {
     issuing.value = false;
+  }
+};
+
+const openFundingModal = (card: VirtualCard, mode: 'TOPUP' | 'UNLOAD') => {
+  fundingCard.value = card;
+  fundingForm.mode = mode;
+  fundingForm.amount = '';
+  fundingErrorMsg.value = '';
+  fundingModalOpen.value = true;
+};
+
+const submitFunding = async () => {
+  const amount = parseMoney(fundingForm.amount);
+  if (!fundingCard.value || !amount || amount <= 0) {
+    fundingErrorMsg.value = 'Ingresa un monto válido mayor a 0';
+    return;
+  }
+  fundingLoading.value = true;
+  fundingErrorMsg.value = '';
+  const endpoint = fundingForm.mode === 'TOPUP'
+    ? `/cards/${fundingCard.value.id}/topup`
+    : `/cards/${fundingCard.value.id}/unload`;
+
+  try {
+    const res = await api.post<any>(endpoint, { amount });
+    if (res.data?.card) {
+      const updated = normalizeCard(res.data.card);
+      const idx = cards.value.findIndex(c => c.id === updated.id);
+      if (idx >= 0) cards.value[idx] = updated;
+      if (selectedCard.value?.id === updated.id) selectedCard.value = updated;
+      persistCards();
+    }
+    pushNotification({
+      title: fundingForm.mode === 'TOPUP' ? 'Recarga exitosa' : 'Descarga exitosa',
+      message:
+        fundingForm.mode === 'TOPUP'
+          ? `Cargaste $${formatAmount(amount)} al saldo prepago de la tarjeta •••• ${fundingCard.value.last4}.`
+          : `Devolviste $${formatAmount(amount)} de la tarjeta •••• ${fundingCard.value.last4} a tu cuenta principal.`,
+      type: 'success',
+    });
+    fundingModalOpen.value = false;
+  } catch (err: any) {
+    fundingErrorMsg.value = err?.response?.data?.message || 'No se pudo procesar la operación';
+  } finally {
+    fundingLoading.value = false;
   }
 };
 
@@ -867,13 +1267,19 @@ const toggleFreeze = async (card: VirtualCard) => {
 };
 
 const cancelCard = async (card: VirtualCard) => {
-  if (!confirm('¿Estás seguro de cancelar esta tarjeta? Esta acción no se puede deshacer.')) return;
+  if (!confirm('¿Estás seguro de cancelar esta tarjeta? Si tiene saldo prepago remanente, se reembolsará a tu cuenta principal.')) return;
   try {
-    await api.patch(`/cards/${card.id}/status`, { status: 'CANCELLED' });
+    const res = await api.patch(`/cards/${card.id}/status`, { status: 'CANCELLED' });
+    if (res.data) {
+      Object.assign(card, normalizeCard(res.data));
+    } else {
+      card.status = 'CANCELLED';
+      card.prepaidBalance = 0;
+    }
   } catch {
-    // fallback
+    card.status = 'CANCELLED';
+    card.prepaidBalance = 0;
   }
-  card.status = 'CANCELLED';
   pushNotification({
     title: 'Tarjeta cancelada',
     message: `Cancelaste permanentemente la tarjeta terminada en ${card.tokenizedPan.slice(-4)}.`,
@@ -883,7 +1289,7 @@ const cancelCard = async (card: VirtualCard) => {
 };
 
 const deleteCard = async (card: VirtualCard) => {
-  if (!confirm('¿Deseas eliminar esta tarjeta? Se borrará de tu lista.')) return;
+  if (!confirm('¿Deseas eliminar esta tarjeta? Si tiene saldo prepago cargado, volverá a tu cuenta principal.')) return;
   try {
     await api.delete(`/cards/${card.id}`);
   } catch {
@@ -908,6 +1314,7 @@ const openLimitsModal = (card: VirtualCard) => {
   limitsForm.dailyLimit = formatMoneyInput(card.spendingRules.dailyLimit);
   limitsForm.monthlyLimit = formatMoneyInput(card.spendingRules.monthlyLimit);
   limitsForm.internationalAllowed = card.spendingRules.internationalAllowed;
+  limitsForm.autoDebitFromAccount = card.spendingRules.autoDebitFromAccount;
   limitsForm.blockedCategories = [...card.spendingRules.blockedCategories];
   limitsModalOpen.value = true;
 };
@@ -919,6 +1326,7 @@ const saveLimits = async () => {
     dailyLimit: parseMoney(limitsForm.dailyLimit),
     monthlyLimit: parseMoney(limitsForm.monthlyLimit),
     internationalAllowed: limitsForm.internationalAllowed,
+    autoDebitFromAccount: limitsForm.autoDebitFromAccount,
     blockedCategories: [...limitsForm.blockedCategories],
   };
   try {
@@ -926,6 +1334,7 @@ const saveLimits = async () => {
       monthlyLimit: newRules.monthlyLimit ?? 0,
       dailyLimit: newRules.dailyLimit,
       internationalAllowed: newRules.internationalAllowed,
+      autoDebitFromAccount: newRules.autoDebitFromAccount,
       blockedCategories: newRules.blockedCategories,
     });
     if (res.data) {
@@ -940,10 +1349,10 @@ const saveLimits = async () => {
     selectedCard.value = { ...card };
   }
   persistCards();
-  limitsSuccessMsg.value = '¡Límites actualizados!';
+  limitsSuccessMsg.value = '¡Límites y modo de fondeo actualizados!';
   pushNotification({
-    title: 'Límites actualizados',
-    message: `Se actualizaron las reglas de gasto de la tarjeta terminada en ${card.tokenizedPan.slice(-4)}.`,
+    title: 'Configuración actualizada',
+    message: `Se actualizaron las reglas de la tarjeta terminada en ${card.tokenizedPan.slice(-4)}.`,
     type: 'info',
   });
   setTimeout(() => { limitsModalOpen.value = false; }, 900);
@@ -997,6 +1406,7 @@ const submitSimulate = async () => {
       const idx = cards.value.findIndex(c => c.id === simulateCard.value!.id);
       if (idx >= 0) {
         cards.value[idx] = normalizeCard(res.data.card);
+        simulateCard.value = cards.value[idx];
         if (selectedCard.value?.id === simulateCard.value.id) {
           selectedCard.value = cards.value[idx];
         }
@@ -1080,7 +1490,6 @@ const loadCardTransactions = async (): Promise<Transaction[]> => {
 // Data fetch logic
 const fetchCardsData = async () => {
   loading.value = true;
-  // Clean up any old mock data or legacy shared key
   localStorage.removeItem('nova_cards_demo');
   localStorage.removeItem('nova_custom_cards');
 
@@ -1091,11 +1500,9 @@ const fetchCardsData = async () => {
     ]);
 
     if (cardsRes.status === 'fulfilled' && Array.isArray(cardsRes.value.data)) {
-      // Backend returned cards specifically for this authenticated user
       cards.value = cardsRes.value.data.map(normalizeCard);
       persistCards();
     } else {
-      // Load user-created cards only from user's isolated local storage
       const key = getStorageKey();
       if (key) {
         const saved = localStorage.getItem(key);
@@ -1103,7 +1510,6 @@ const fetchCardsData = async () => {
           try {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed)) {
-              // Filter out any hardcoded demo cards (c1, c2, c3, c4)
               cards.value = parsed.filter(c => !['c1', 'c2', 'c3', 'c4'].includes(c.id)).map(normalizeCard);
             } else {
               cards.value = [];
@@ -1122,7 +1528,6 @@ const fetchCardsData = async () => {
     if (txnRes.status === 'fulfilled' && Array.isArray(txnRes.value)) {
       transactions.value = txnRes.value;
       persistTransactions();
-
     } else {
       transactions.value = [];
     }
@@ -1296,7 +1701,7 @@ watch(() => authStore.user?.id, () => {
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
   overflow: hidden;
-  min-height: 155px;
+  min-height: 162px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1351,6 +1756,11 @@ watch(() => authStore.user?.id, () => {
   position: relative;
   z-index: 3;
 }
+.vcard__brand-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 .vcard__logo {
   width: 32px;
   height: 32px;
@@ -1358,6 +1768,16 @@ watch(() => authStore.user?.id, () => {
   border-radius: 8px;
   background: rgba(255,255,255,0.9);
   padding: 2px;
+}
+.vcard__token-pill {
+  font-family: 'Courier New', monospace;
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
 }
 .vcard__badge {
   font-size: 0.62rem;
@@ -1399,8 +1819,15 @@ watch(() => authStore.user?.id, () => {
   z-index: 3;
 }
 .vcard__field { display: flex; flex-direction: column; }
-.vcard__field-label { font-size: 0.6rem; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.05em; }
-.vcard__field-value { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.85); }
+.vcard__field-label { font-size: 0.6rem; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.05em; }
+.vcard__field-value { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.9); }
+.vcard__field-value--accent { color: #00e5c0; font-weight: 700; }
+.vcard__funding-tag {
+  font-size: 0.62rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-left: 3px;
+  font-weight: 600;
+}
 .vcard__chip {
   width: 32px;
   height: 24px;
@@ -1459,9 +1886,9 @@ watch(() => authStore.user?.id, () => {
   border: 1px solid rgba(255,255,255,0.06);
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.1rem;
   overflow-y: auto;
-  max-height: calc(100vh - 260px);
+  max-height: calc(100vh - 240px);
 }
 .detail-panel::-webkit-scrollbar { width: 4px; }
 .detail-panel::-webkit-scrollbar-track { background: transparent; }
@@ -1523,6 +1950,107 @@ watch(() => authStore.user?.id, () => {
 .detail-header__badge--frozen { background: rgba(96,165,250,0.15); color: #60a5fa; }
 .detail-header__badge--cancelled { background: rgba(239,68,68,0.15); color: #f87171; }
 
+/* Prepaid banner */
+.prepaid-banner {
+  background: linear-gradient(135deg, rgba(0, 229, 192, 0.1), rgba(14, 165, 233, 0.08));
+  border: 1px solid rgba(0, 229, 192, 0.22);
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.prepaid-banner__main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.prepaid-banner__label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.55);
+}
+.prepaid-banner__amount {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #00e5c0;
+  line-height: 1.2;
+}
+.prepaid-banner__mode {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+}
+.prepaid-banner__mode--auto {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+}
+.prepaid-banner__mode--strict {
+  background: rgba(0, 229, 192, 0.16);
+  color: #00e5c0;
+  border: 1px solid rgba(0, 229, 192, 0.3);
+}
+.prepaid-banner__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.prepaid-btn {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.prepaid-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.prepaid-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.prepaid-btn--topup {
+  background: #00e5c0;
+  color: #0a1220;
+}
+.prepaid-btn--unload {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Revealed Banner */
+.revealed-banner {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+}
+.revealed-banner__grid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.revealed-banner__label {
+  display: block;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+.revealed-banner__val {
+  font-family: 'Courier New', monospace;
+  font-size: 0.92rem;
+  color: #fde68a;
+  letter-spacing: 0.06em;
+}
+.revealed-banner__timer {
+  font-size: 0.85rem;
+  color: #fbbf24;
+}
+
 /* Quick actions */
 .quick-actions {
   display: flex;
@@ -1543,6 +2071,13 @@ watch(() => authStore.user?.id, () => {
 }
 .action-btn svg { width: 14px; height: 14px; }
 .action-btn:hover { transform: translateY(-1px); }
+
+.action-btn--reveal {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.action-btn--reveal:hover { background: rgba(245, 158, 11, 0.2); }
 
 .action-btn--freeze {
   background: rgba(96,165,250,0.12);
@@ -1585,7 +2120,7 @@ watch(() => authStore.user?.id, () => {
 .rules-panel {
   background: rgba(255,255,255,0.03);
   border-radius: 14px;
-  padding: 1.25rem;
+  padding: 1.15rem;
   border: 1px solid rgba(255,255,255,0.05);
 }
 .rules-panel__title {
@@ -1596,13 +2131,16 @@ watch(() => authStore.user?.id, () => {
 }
 .rules-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.75rem;
 }
 .rule-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+.rule-item--wide {
+  grid-column: 1 / -1;
 }
 .rule-item__label {
   font-size: 0.68rem;
@@ -1618,11 +2156,27 @@ watch(() => authStore.user?.id, () => {
 .rule-item__value--ok { color: #00e5c0; }
 .rule-item__value--no { color: #f87171; }
 
+.blocked-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+.blocked-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.14);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
 /* Info panel */
 .info-panel {
   background: rgba(255,255,255,0.03);
   border-radius: 14px;
-  padding: 1.25rem;
+  padding: 1.15rem;
   border: 1px solid rgba(255,255,255,0.05);
 }
 .info-panel__title {
@@ -1636,6 +2190,7 @@ watch(() => authStore.user?.id, () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
 }
 .info-row__label {
   font-size: 0.75rem;
@@ -1647,6 +2202,24 @@ watch(() => authStore.user?.id, () => {
   color: #e5e7eb;
   font-family: 'Courier New', monospace;
 }
+.info-row__value--token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #00e5c0;
+}
+.token-copy-btn {
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 229, 192, 0.3);
+  background: rgba(0, 229, 192, 0.1);
+  color: #00e5c0;
+  cursor: pointer;
+}
+.token-copy-btn:hover { background: rgba(0, 229, 192, 0.2); }
 
 /* Card transactions */
 .card-txns__head {
@@ -1720,7 +2293,9 @@ watch(() => authStore.user?.id, () => {
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 18px;
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
+  max-height: 92vh;
+  overflow-y: auto;
   box-shadow: 0 20px 45px rgba(0,0,0,0.65), 0 0 25px rgba(0,229,192,0.08);
   padding: 1.5rem;
 }
@@ -1779,7 +2354,12 @@ watch(() => authStore.user?.id, () => {
 .modal-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.9rem;
+}
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
 }
 .form-group {
   display: flex;
@@ -1824,6 +2404,7 @@ watch(() => authStore.user?.id, () => {
   cursor: pointer;
   position: relative;
   transition: background 0.2s;
+  flex-shrink: 0;
 }
 .toggle-btn--on { background: #00e5c0; }
 .toggle-btn__dot {
@@ -1839,8 +2420,8 @@ watch(() => authStore.user?.id, () => {
 }
 .toggle-btn--on .toggle-btn__dot { transform: translateX(20px); }
 .toggle-label {
-  font-size: 0.82rem;
-  color: rgba(255,255,255,0.6);
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.65);
 }
 
 /* Category chips */
@@ -1957,6 +2538,7 @@ watch(() => authStore.user?.id, () => {
   .stats-row { grid-template-columns: 1fr; }
   .quick-actions { flex-direction: column; }
   .rules-grid { grid-template-columns: 1fr; }
+  .form-row-2 { grid-template-columns: 1fr; }
 }
 
 /* ===== SIMULATE BUTTON ===== */

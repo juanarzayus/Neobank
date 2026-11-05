@@ -3,9 +3,17 @@ import type { CreateVirtualCardUseCase } from '../../application/use-cases/cards
 import type { DeleteVirtualCardUseCase } from '../../application/use-cases/cards/DeleteVirtualCardUseCase';
 import type { ListVirtualCardsUseCase } from '../../application/use-cases/cards/ListVirtualCardsUseCase';
 import type { ProcessCardTransactionUseCase } from '../../application/use-cases/cards/ProcessCardTransactionUseCase';
+import type { RevealCardDetailsUseCase } from '../../application/use-cases/cards/RevealCardDetailsUseCase';
+import type { TopUpVirtualCardUseCase } from '../../application/use-cases/cards/TopUpVirtualCardUseCase';
+import type { UnloadVirtualCardUseCase } from '../../application/use-cases/cards/UnloadVirtualCardUseCase';
 import type { UpdateCardLimitsUseCase } from '../../application/use-cases/cards/UpdateCardLimitsUseCase';
 import type { UpdateCardStatusUseCase } from '../../application/use-cases/cards/UpdateCardStatusUseCase';
-import { presentCard, presentPurchase } from '../presenters/presenters';
+import {
+  presentCard,
+  presentCardFunding,
+  presentPurchase,
+  presentRevealedCard,
+} from '../presenters/presenters';
 import {
   bodyOf,
   nullableNumber,
@@ -22,11 +30,17 @@ const MESSAGES = {
   dailyLimit: 'Límite diario no válido',
   international: 'Valor de compras internacionales no válido',
   blockedCategories: 'Categorías bloqueadas no válidas',
+  initialBalance: 'Monto de carga inicial no válido',
+  autoDebit: 'Opción de débito automático de cuenta no válida',
+  fundingAmount: 'El monto debe ser un número mayor a 0',
 };
 
 export interface VirtualCardControllerDeps {
   list: ListVirtualCardsUseCase;
   create: CreateVirtualCardUseCase;
+  reveal: RevealCardDetailsUseCase;
+  topUp: TopUpVirtualCardUseCase;
+  unload: UnloadVirtualCardUseCase;
   updateLimits: UpdateCardLimitsUseCase;
   updateStatus: UpdateCardStatusUseCase;
   delete: DeleteVirtualCardUseCase;
@@ -50,8 +64,35 @@ export class VirtualCardController {
       dailyLimit: nullableNumber(body.dailyLimit, MESSAGES.dailyLimit) ?? null,
       internationalAllowed: optionalBoolean(body.internationalAllowed, MESSAGES.international) ?? true,
       blockedCategories: optionalStringArray(body.blockedCategories, MESSAGES.blockedCategories) ?? [],
+      initialBalance: optionalNumber(body.initialBalance, MESSAGES.initialBalance) ?? 0,
+      autoDebitFromAccount: optionalBoolean(body.autoDebitFromAccount, MESSAGES.autoDebit) ?? false,
     });
     res.status(201).json(presentCard(card));
+  };
+
+  reveal = async (req: Request, res: Response) => {
+    const details = await this.useCases.reveal.execute(res.locals.userId, req.params.id);
+    res.json(presentRevealedCard(details));
+  };
+
+  topUp = async (req: Request, res: Response) => {
+    const body = bodyOf(req);
+    const result = await this.useCases.topUp.execute({
+      userId: res.locals.userId,
+      cardId: req.params.id,
+      amount: requireNumber(body.amount, MESSAGES.fundingAmount),
+    });
+    res.json(presentCardFunding(result));
+  };
+
+  unload = async (req: Request, res: Response) => {
+    const body = bodyOf(req);
+    const result = await this.useCases.unload.execute({
+      userId: res.locals.userId,
+      cardId: req.params.id,
+      amount: requireNumber(body.amount, MESSAGES.fundingAmount),
+    });
+    res.json(presentCardFunding(result));
   };
 
   updateLimits = async (req: Request, res: Response) => {
@@ -63,6 +104,7 @@ export class VirtualCardController {
       dailyLimit: nullableNumber(body.dailyLimit, MESSAGES.dailyLimit),
       internationalAllowed: optionalBoolean(body.internationalAllowed, MESSAGES.international),
       blockedCategories: optionalStringArray(body.blockedCategories, MESSAGES.blockedCategories),
+      autoDebitFromAccount: optionalBoolean(body.autoDebitFromAccount, MESSAGES.autoDebit),
     });
     res.json(presentCard(card));
   };

@@ -17,6 +17,7 @@ export class UpdateCardLimitsUseCase {
     if (dto.dailyLimit !== undefined) changes.dailyLimit = dto.dailyLimit;
     if (dto.internationalAllowed !== undefined) changes.internationalAllowed = dto.internationalAllowed;
     if (dto.blockedCategories !== undefined) changes.blockedCategories = dto.blockedCategories;
+    if (dto.autoDebitFromAccount !== undefined) changes.autoDebitFromAccount = dto.autoDebitFromAccount;
 
     if (Object.keys(changes).length === 0) {
       throw new ValidationError('No se proporcionaron campos para actualizar');

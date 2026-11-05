@@ -8,14 +8,17 @@ import type { IClock } from '../../ports/IClock';
 import type { IUnitOfWork } from '../../ports/IUnitOfWork';
 
 /**
- * Autoriza una compra con tarjeta virtual: aplica las reglas de la tarjeta,
- * descuenta el saldo de la cuenta corriente y registra el movimiento, todo de forma atómica.
+ * Autoriza una compra con tarjeta prepago tokenizada:
+ * 1) Aplica las reglas de gasto y de fondeo (prepago aislado vs débito de cuenta habilitado).
+ * 2) Descuenta primero del saldo prepago de la tarjeta; si falta y autoDebitFromAccount está activo,
+ *    descuenta el remanente de la cuenta corriente (CHECKING).
+ * 3) Registra el movimiento de consumo de forma atómica.
  */
 export class ProcessCardTransactionUseCase {
   constructor(
     private readonly uow: IUnitOfWork,
     private readonly clock: IClock
-  ) {}
+  ) { }
 
   async execute(dto: AuthorizePurchaseDto): Promise<AuthorizePurchaseResult> {
     const amount = Money.positiveAmount(dto.amount, MAX_CARD_PURCHASE_AMOUNT);
@@ -40,15 +43,23 @@ export class ProcessCardTransactionUseCase {
       const decision = card.evaluatePurchase({ amount, category, isInternational: dto.isInternational, spentToday });
       if (!decision.approved) return rejectWith(decision.reason);
 
+      const { fromPrepaid, fromAccount } = card.splitPayment(amount);
+
       const account = await accounts.findCheckingForUpdate(dto.userId);
       if (!account) return rejectWith('No se encontró cuenta principal (CHECKING)');
-      if (!account.canAfford(amount)) {
-        return rejectWith(`Saldo insuficiente (disponible: $${account.balance.toFixed(2)})`);
+
+      if (fromAccount > 0 && !account.canAfford(fromAccount)) {
+        return rejectWith(
+          `Saldo insuficiente (prepago tarjeta: $${card.prepaidBalance.toFixed(2)}, disponible cuenta: $${account.balance.toFixed(2)})`
+        );
       }
 
-      account.withdraw(amount);
-      card.registerPurchase(amount);
-      await accounts.save(account);
+      if (fromAccount > 0) {
+        account.withdraw(fromAccount);
+        await accounts.save(account);
+      }
+
+      card.registerPurchase(amount, fromPrepaid);
       await cards.save(card);
 
       await movements.record({
