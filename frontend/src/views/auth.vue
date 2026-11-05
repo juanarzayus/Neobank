@@ -30,9 +30,19 @@
       </div>
 
       <div class="field">
-        <label for="email">Correo electrónico</label>
-        <input id="email" v-model.trim="form.email" type="email" autocomplete="email" placeholder="tu@correo.com" />
-        <span v-if="errors.email" class="error">{{ errors.email }}</span>
+        <label for="username">Usuario</label>
+        <input
+          id="username"
+          v-model.trim="form.username"
+          type="text"
+          autocomplete="username"
+          autocapitalize="none"
+          spellcheck="false"
+          maxlength="30"
+          :placeholder="isRegister ? 'Ej. juan.perez' : 'Tu usuario'"
+        />
+        <span v-if="errors.username" class="error">{{ errors.username }}</span>
+        <span v-else-if="isRegister" class="hint">3 a 30 caracteres: letras, números, punto, guion y guion bajo.</span>
       </div>
 
       <div class="field">
@@ -89,7 +99,7 @@ const serverError = ref('');
 const form = reactive({
   firstName: '',
   lastName: '',
-  email: '',
+  username: '',
   password: '',
   confirmPassword: ''
 });
@@ -107,7 +117,15 @@ const validate = () => {
     if (!form.firstName) errors.firstName = 'Ingresa tu nombre';
     if (!form.lastName) errors.lastName = 'Ingresa tu apellido';
   }
-  if (!/^\S+@\S+\.\S+$/.test(form.email)) errors.email = 'Correo no válido';
+  if (!form.username) {
+    errors.username = 'Ingresa tu usuario';
+  } else if (isRegister.value) {
+    if (form.username.length < 3 || form.username.length > 30) {
+      errors.username = 'Debe tener entre 3 y 30 caracteres';
+    } else if (!/^[a-zA-Z0-9._-]+$/.test(form.username)) {
+      errors.username = 'Solo letras, números, punto, guion y guion bajo';
+    }
+  }
   if (form.password.length < 8) errors.password = 'Mínimo 8 caracteres';
   if (isRegister.value && form.confirmPassword !== form.password) {
     errors.confirmPassword = 'Las contraseñas no coinciden';
@@ -124,11 +142,11 @@ const onSubmit = async () => {
       await authStore.register({
         firstName: form.firstName,
         lastName: form.lastName,
-        email: form.email,
+        username: form.username,
         password: form.password
       });
     } else {
-      await authStore.login(form.email, form.password);
+      await authStore.login(form.username, form.password);
     }
     router.push('/dashboard');
   } catch (e: any) {
@@ -204,6 +222,7 @@ const onSubmit = async () => {
   padding: 0.3rem 0.5rem;
 }
 .error { color: #dc2626; font-size: 0.78rem; }
+.hint { color: #94a3b8; font-size: 0.75rem; }
 .server-error {
   background: #fef2f2;
   color: #b91c1c;

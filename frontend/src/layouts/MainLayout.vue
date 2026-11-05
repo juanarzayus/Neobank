@@ -62,7 +62,7 @@
         <div class="sidebar__avatar">{{ userInitials }}</div>
         <div class="sidebar__user-info">
           <p class="sidebar__user-name">{{ displayName }}</p>
-          <p class="sidebar__user-email">{{ authStore.user?.email }}</p>
+          <p class="sidebar__user-email">@{{ authStore.user?.username }}</p>
         </div>
       </div>
     </aside>
@@ -238,7 +238,7 @@
               <div v-if="profileMenuOpen" class="profile-dropdown">
                 <div class="profile-dropdown__header">
                   <p class="profile-dropdown__name">{{ displayName }}</p>
-                  <p class="profile-dropdown__email">{{ authStore.user?.email }}</p>
+                  <p class="profile-dropdown__email">@{{ authStore.user?.username }}</p>
                 </div>
                 <div class="profile-dropdown__divider"></div>
                 <button class="profile-dropdown__item" @click="openProfileModal">
@@ -310,14 +310,14 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label" for="email">Correo electrónico</label>
+              <label class="form-label" for="username">Usuario</label>
               <input
-                id="email"
-                v-model="profileForm.email"
-                type="email"
+                id="username"
+                :value="'@' + (authStore.user?.username ?? '')"
+                type="text"
                 class="form-input"
-                placeholder="ejemplo@correo.com"
-                required
+                disabled
+                title="El usuario no se puede cambiar"
               />
             </div>
 
@@ -444,7 +444,6 @@ const profileModalOpen = ref(false);
 const profileSuccessMsg = ref('');
 const profileForm = ref({
   preferredName: '',
-  email: '',
   address: '',
 });
 
@@ -453,7 +452,6 @@ const openProfileModal = () => {
   profileSuccessMsg.value = '';
   profileForm.value = {
     preferredName: authStore.user?.preferredName || authStore.user?.firstName || '',
-    email: authStore.user?.email || '',
     address: authStore.user?.address || '',
   };
   profileModalOpen.value = true;
@@ -466,7 +464,6 @@ const closeProfileModal = () => {
 const saveProfile = () => {
   authStore.updateProfile({
     preferredName: profileForm.value.preferredName.trim(),
-    email: profileForm.value.email.trim(),
     address: profileForm.value.address.trim(),
   });
   profileSuccessMsg.value = '¡Datos actualizados correctamente!';

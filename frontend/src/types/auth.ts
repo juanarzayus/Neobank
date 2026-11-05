@@ -3,7 +3,7 @@ export type KycStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'pending' | 'appro
 
 export interface UserProfile {
     id: string;
-    email: string;
+    username: string;
     firstName: string;
     lastName: string;
     preferredName?: string;
