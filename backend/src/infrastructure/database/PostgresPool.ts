@@ -1,18 +1,15 @@
-import { resolve } from 'node:path';
-import dotenv from 'dotenv';
-import { Pool } from 'pg';
+import { Pool, types, type PoolClient } from 'pg';
+import { env } from '../config/env';
 
-// Load the backend's own .env regardless of the process working directory.
-// In local development, prefer this file over stale inherited DB_* values.
-dotenv.config({
-  path: resolve(__dirname, '../../../.env'),
-  override: process.env.NODE_ENV !== 'production',
-});
+// DATE (OID 1082) se entrega como texto 'YYYY-MM-DD' para evitar desfases de zona horaria.
+types.setTypeParser(1082, (value: string) => value);
 
-export const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: Number(process.env.DB_PORT),
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
+export const pool = new Pool(env.db);
+
+/** Lo que necesita un repositorio: sirve tanto el pool como un cliente dentro de una transacción. */
+export type Queryable = Pick<PoolClient, 'query'>;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** PostgreSQL rechaza (error 22P02) un texto que no es UUID en una columna UUID; se trata como "no existe". */
+export const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID_RE.test(value);

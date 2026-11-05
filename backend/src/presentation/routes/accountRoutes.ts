@@ -1,16 +1,18 @@
-import { Router } from 'express';
-import { asyncHandler } from '../../infrastructure/middlewares/errorHandlerMiddleware';
-import { requireAuth } from '../../infrastructure/middlewares/authMiddleware';
-import { AccountController } from '../controllers/AccountController';
+import { type RequestHandler, Router } from 'express';
+import type { AccountController } from '../controllers/AccountController';
+import { asyncHandler } from '../middlewares/errorHandlerMiddleware';
 
-export const accountRoutes = Router();
-
-accountRoutes.use(requireAuth);
-
-accountRoutes.get('/', asyncHandler(AccountController.list));
-accountRoutes.post('/savings', asyncHandler(AccountController.createSavings));
-accountRoutes.post('/transfer', asyncHandler(AccountController.transfer));
-accountRoutes.post('/:id/deposit', asyncHandler(AccountController.deposit));
-accountRoutes.post('/:id/withdraw', asyncHandler(AccountController.withdraw));
-accountRoutes.post('/:id/interest', asyncHandler(AccountController.creditInterest));
-accountRoutes.get('/:id/movements', asyncHandler(AccountController.movements));
+export const createAccountRoutes = (controller: AccountController, requireAuth: RequestHandler): Router => {
+  const router = Router();
+  router.use(requireAuth);
+  router.get('/', asyncHandler(controller.list));
+  router.post('/savings', asyncHandler(controller.createSavings));
+  router.post('/transfer', asyncHandler(controller.transfer));
+  router.post('/transfer/external', asyncHandler(controller.transferExternal));
+  router.get('/lookup/:accountNumber', asyncHandler(controller.lookup));
+  router.post('/:id/deposit', asyncHandler(controller.deposit));
+  router.post('/:id/withdraw', asyncHandler(controller.withdraw));
+  router.post('/:id/interest', asyncHandler(controller.creditInterest));
+  router.get('/:id/movements', asyncHandler(controller.movements));
+  return router;
+};

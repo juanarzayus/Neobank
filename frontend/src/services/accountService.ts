@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { Account, AccountMovement } from '@/types/accounts';
+import type { Account, AccountHolderInfo, AccountMovement } from '@/types/accounts';
 import type { SpendingCategoryId } from '@/utils/spendingCategories';
 
 export interface WithdrawOptions {
@@ -26,6 +26,18 @@ export const accountService = {
     },
     async transfer(fromAccountId: string, toAccountId: string, amount: number) {
         return (await api.post<{ from: Account; to: Account }>('/accounts/transfer', { fromAccountId, toAccountId, amount })).data;
+    },
+    /** Consulta el titular de una cuenta por su número (para confirmar antes de enviar). */
+    async lookup(accountNumber: string): Promise<AccountHolderInfo> {
+        return (await api.get<AccountHolderInfo>(`/accounts/lookup/${encodeURIComponent(accountNumber)}`)).data;
+    },
+    /** Transferencia a cualquier cuenta (de otra persona o propia) por número de cuenta. */
+    async transferExternal(fromAccountId: string, toAccountNumber: string, amount: number) {
+        return (await api.post<{ from: Account; to: AccountHolderInfo; amount: number }>('/accounts/transfer/external', {
+            fromAccountId,
+            toAccountNumber,
+            amount,
+        })).data;
     },
     async creditInterest(accountId: string) {
         return (await api.post<{ account: Account; interest: number }>(`/accounts/${accountId}/interest`)).data;

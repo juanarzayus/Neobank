@@ -5,7 +5,7 @@ import type { UserProfile } from '@/types/auth';
 
 const DEMO_USER: UserProfile = {
     id: 'demo-user-001',
-    email: 'demo@novaneobank.com',
+    username: 'demo',
     firstName: 'Usuario',
     lastName: 'Demo',
     preferredName: 'Usuario',
@@ -60,17 +60,17 @@ export const useAuthStore = defineStore('auth', () => {
 
     type AuthResponse = { accessToken: string; user: UserProfile };
 
-    const login = async (email: string, password: string) => {
+    const login = async (username: string, password: string) => {
         sessionStorage.removeItem('nova_demo');
         user.value = null;
         accessToken.value = null;
-        const response = await api.post<AuthResponse>('/auth/login', { email, password });
+        const response = await api.post<AuthResponse>('/auth/login', { username, password });
         accessToken.value = response.data.accessToken;
         user.value = applyCustomUserData(response.data.user);
         isDemo.value = false;
     };
 
-    const register = async (payload: { firstName: string; lastName: string; email: string; password: string }) => {
+    const register = async (payload: { firstName: string; lastName: string; username: string; password: string }) => {
         sessionStorage.removeItem('nova_demo');
         user.value = null;
         accessToken.value = null;
@@ -88,18 +88,16 @@ export const useAuthStore = defineStore('auth', () => {
         sessionStorage.setItem('nova_demo', '1');
     };
 
-    const updateProfile = (data: { preferredName?: string; email?: string; address?: string }) => {
+    const updateProfile = (data: { preferredName?: string; address?: string }) => {
         if (!user.value) return;
         user.value = {
             ...user.value,
             ...(data.preferredName !== undefined ? { preferredName: data.preferredName } : {}),
-            ...(data.email !== undefined && data.email ? { email: data.email } : {}),
             ...(data.address !== undefined ? { address: data.address } : {}),
         };
         try {
             const custom = {
                 preferredName: user.value.preferredName,
-                email: user.value.email,
                 address: user.value.address,
             };
             localStorage.setItem('nova_user_profile_' + user.value.id, JSON.stringify(custom));

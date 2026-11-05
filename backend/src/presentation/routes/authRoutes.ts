@@ -1,12 +1,13 @@
-import { Router } from 'express';
-import { asyncHandler } from '../../infrastructure/middlewares/errorHandlerMiddleware';
-import { requireAuth } from '../../infrastructure/middlewares/authMiddleware';
-import { AuthController } from '../controllers/AuthController';
+import { type RequestHandler, Router } from 'express';
+import type { AuthController } from '../controllers/AuthController';
+import { asyncHandler } from '../middlewares/errorHandlerMiddleware';
 
-export const authRoutes = Router();
-
-authRoutes.post('/register', asyncHandler(AuthController.register));
-authRoutes.post('/login', asyncHandler(AuthController.login));
-authRoutes.post('/refresh', asyncHandler(AuthController.refresh));
-authRoutes.post('/logout', asyncHandler(AuthController.logout));
-authRoutes.get('/me', requireAuth, asyncHandler(AuthController.me));
+export const createAuthRoutes = (controller: AuthController, requireAuth: RequestHandler): Router => {
+  const router = Router();
+  router.post('/register', asyncHandler(controller.register));
+  router.post('/login', asyncHandler(controller.login));
+  router.post('/refresh', asyncHandler(controller.refresh));
+  router.post('/logout', asyncHandler(controller.logout));
+  router.get('/me', requireAuth, asyncHandler(controller.me));
+  return router;
+};

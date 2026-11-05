@@ -1,21 +1,25 @@
-import type { Request, Response } from 'express';
-import { env } from '../../config/env';
-import { PostgresUserRepository, type UserRecord } from '../../infrastructure/database/repositories/PostgresUserRepository';
-import { AppError } from '../../infrastructure/middlewares/errorHandlerMiddleware';
-import { hashPassword, verifyPassword } from '../../infrastructure/security/password';
-import { signToken, verifyToken } from '../../infrastructure/security/token';
+import type { CookieOptions, Request, Response } from 'express';
+import type { AuthSession } from '../../application/dtos/AuthDtos';
+import type { GetUserProfileUseCase } from '../../application/use-cases/auth/GetUserProfileUseCase';
+import type { LoginUserUseCase } from '../../application/use-cases/auth/LoginUserUseCase';
+import type { RefreshSessionUseCase } from '../../application/use-cases/auth/RefreshSessionUseCase';
+import type { RegisterUserUseCase } from '../../application/use-cases/auth/RegisterUserUseCase';
+import { presentUser } from '../presenters/presenters';
+import { bodyOf, requireString, stringOrEmpty } from '../validation/requestParsers';
 
 const REFRESH_COOKIE = 'refreshToken';
-const EMAIL_RE = /^\S+@\S+\.\S+$/;
 
-const toProfile = (u: UserRecord) => ({
-  id: u.id,
-  email: u.email,
-  firstName: u.firstName,
-  lastName: u.lastName,
-  kycStatus: u.kycStatus,
-  createdAt: u.createdAt,
-});
+export interface AuthControllerDeps {
+  register: RegisterUserUseCase;
+  login: LoginUserUseCase;
+  refresh: RefreshSessionUseCase;
+  getProfile: GetUserProfileUseCase;
+}
+
+export interface AuthCookieOptions {
+  secure: boolean;
+  refreshTtlSeconds: number;
+}
 
 function readCookie(req: Request, name: string): string | null {
   const raw = req.headers.cookie;
@@ -27,92 +31,59 @@ function readCookie(req: Request, name: string): string | null {
   return null;
 }
 
-function issueSession(res: Response, user: UserRecord) {
-  res.cookie(REFRESH_COOKIE, signToken(user.id, 'refresh', env.refreshTtlSeconds), {
-    httpOnly: true,
-    secure: env.isProduction,
-    sameSite: 'lax',
-    path: '/api/v1/auth',
-    maxAge: env.refreshTtlSeconds * 1000,
-  });
-  return {
-    accessToken: signToken(user.id, 'access', env.accessTtlSeconds),
-    user: toProfile(user),
+export class AuthController {
+  constructor(
+    private readonly useCases: AuthControllerDeps,
+    private readonly cookie: AuthCookieOptions
+  ) {}
+
+  private get cookieOptions(): CookieOptions {
+    return { httpOnly: true, secure: this.cookie.secure, sameSite: 'lax', path: '/api/v1/auth' };
+  }
+
+  /** El refresh token viaja en cookie HttpOnly; el access token en el cuerpo. */
+  private sendSession(res: Response, session: AuthSession, status = 200) {
+    res.cookie(REFRESH_COOKIE, session.refreshToken, {
+      ...this.cookieOptions,
+      maxAge: this.cookie.refreshTtlSeconds * 1000,
+    });
+    res.status(status).json({ accessToken: session.accessToken, user: presentUser(session.user) });
+  }
+
+  register = async (req: Request, res: Response) => {
+    const body = bodyOf(req);
+    const session = await this.useCases.register.execute({
+      firstName: stringOrEmpty(body.firstName),
+      lastName: stringOrEmpty(body.lastName),
+      username: stringOrEmpty(body.username),
+      password: stringOrEmpty(body.password),
+    });
+    this.sendSession(res, session, 201);
+  };
+
+  login = async (req: Request, res: Response) => {
+    const body = bodyOf(req);
+    const message = 'Usuario y contraseña son obligatorios';
+    const session = await this.useCases.login.execute({
+      username: requireString(body.username, message),
+      password: requireString(body.password, message),
+    });
+    this.sendSession(res, session);
+  };
+
+  refresh = async (req: Request, res: Response) => {
+    const session = await this.useCases.refresh.execute(readCookie(req, REFRESH_COOKIE));
+    this.sendSession(res, session);
+  };
+
+  logout = async (_req: Request, res: Response) => {
+    res.cookie(REFRESH_COOKIE, '', { ...this.cookieOptions, maxAge: 0, expires: new Date(0) });
+    res.clearCookie(REFRESH_COOKIE, this.cookieOptions);
+    res.status(204).end();
+  };
+
+  me = async (_req: Request, res: Response) => {
+    const user = await this.useCases.getProfile.execute(res.locals.userId);
+    res.json(presentUser(user));
   };
 }
-
-export const AuthController = {
-  async register(req: Request, res: Response) {
-    const { firstName, lastName, email, password } = req.body ?? {};
-
-    if (typeof firstName !== 'string' || !firstName.trim()) throw new AppError(400, 'El nombre es obligatorio');
-    if (typeof lastName !== 'string' || !lastName.trim()) throw new AppError(400, 'El apellido es obligatorio');
-    if (typeof email !== 'string' || !EMAIL_RE.test(email)) throw new AppError(400, 'Correo no válido');
-    if (typeof password !== 'string' || password.length < 8) {
-      throw new AppError(400, 'La contraseña debe tener mínimo 8 caracteres');
-    }
-
-    const normalizedEmail = email.trim().toLowerCase();
-    if (await PostgresUserRepository.findByEmail(normalizedEmail)) {
-      throw new AppError(409, 'Ya existe una cuenta con ese correo');
-    }
-
-    const user = await PostgresUserRepository.create({
-      email: normalizedEmail,
-      passwordHash: await hashPassword(password),
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-    });
-
-    res.status(201).json(issueSession(res, user));
-  },
-
-  async login(req: Request, res: Response) {
-    const { email, password } = req.body ?? {};
-    if (typeof email !== 'string' || typeof password !== 'string') {
-      throw new AppError(400, 'Correo y contraseña son obligatorios');
-    }
-
-    const user = await PostgresUserRepository.findByEmail(email.trim().toLowerCase());
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
-      throw new AppError(401, 'Credenciales inválidas');
-    }
-
-    res.json(issueSession(res, user));
-  },
-
-  async refresh(req: Request, res: Response) {
-    const token = readCookie(req, REFRESH_COOKIE);
-    const payload = token ? verifyToken(token, 'refresh') : null;
-    if (!payload) throw new AppError(401, 'Sesión expirada');
-
-    const user = await PostgresUserRepository.findById(payload.sub);
-    if (!user) throw new AppError(401, 'Sesión inválida');
-
-    res.json(issueSession(res, user));
-  },
-
-  async logout(_req: Request, res: Response) {
-    res.cookie(REFRESH_COOKIE, '', {
-      httpOnly: true,
-      secure: env.isProduction,
-      sameSite: 'lax',
-      path: '/api/v1/auth',
-      maxAge: 0,
-      expires: new Date(0),
-    });
-    res.clearCookie(REFRESH_COOKIE, {
-      httpOnly: true,
-      secure: env.isProduction,
-      sameSite: 'lax',
-      path: '/api/v1/auth',
-    });
-    res.status(204).end();
-  },
-
-  async me(_req: Request, res: Response) {
-    const user = await PostgresUserRepository.findById(res.locals.userId);
-    if (!user) throw new AppError(404, 'Usuario no encontrado');
-    res.json(toProfile(user));
-  },
-};

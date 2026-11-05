@@ -5,6 +5,8 @@ export type AccountMovementType = 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER_IN' | 'TR
 
 export interface Account {
     id: string;
+    /** 10 dígitos: se comparte para recibir transferencias. */
+    accountNumber: string;
     type: AccountType;
     name: string;
     balance: number;
@@ -12,6 +14,13 @@ export interface Account {
     annualRate: number;
     lastInterestAt: string | null;
     createdAt: string;
+}
+
+/** Datos públicos de una cuenta de destino (sin saldo). */
+export interface AccountHolderInfo {
+    accountNumber: string;
+    accountType: AccountType;
+    holderName: string;
 }
 
 export interface AccountMovement {

@@ -46,6 +46,12 @@
             <span v-if="acc.type === 'SAVINGS'" class="account__rate">{{ (acc.annualRate * 100).toFixed(2) }}% EA</span>
           </div>
           <h2 class="account__name">{{ acc.name }}</h2>
+          <p class="account__number" @click.stop>
+            <span>N.º {{ formatAccountNumber(acc.accountNumber) }}</span>
+            <button class="account__copy" type="button" title="Copiar número de cuenta" @click="copyAccountNumber(acc.accountNumber)">
+              Copiar
+            </button>
+          </p>
           <p class="account__balance">{{ money(acc.balance) }}</p>
 
           <div class="account__actions" @click.stop>
@@ -55,9 +61,11 @@
               <button class="chip" type="button" :disabled="savings.length === 0" @click="openModal('transfer', acc)">
                 Enviar a ahorros
               </button>
+              <button class="chip chip--send" type="button" @click="openModal('external', acc)">Enviar a otra cuenta</button>
             </template>
             <template v-else>
               <button class="chip" type="button" @click="openModal('transfer', acc)">Transferir</button>
+              <button class="chip chip--send" type="button" @click="openModal('external', acc)">Enviar a otra cuenta</button>
               <button
                 class="chip chip--accent"
                 type="button"
@@ -90,9 +98,36 @@
               <option v-for="t in transferTargets" :key="t.id" :value="t.id">{{ t.name }} ({{ money(t.balance) }})</option>
             </select>
           </label>
+
+          <template v-if="modal.kind === 'external'">
+            <label class="field">
+              <span>Número de cuenta de destino</span>
+              <input
+                id="field-account-number"
+                v-model="form.accountNumber"
+                type="text"
+                inputmode="numeric"
+                maxlength="12"
+                placeholder="10 dígitos"
+                autocomplete="off"
+                required
+                autofocus
+              />
+            </label>
+            <p v-if="lookingUp" class="hint">Buscando cuenta…</p>
+            <p v-else-if="recipient" class="recipient">
+              <span class="recipient__label">Titular</span>
+              <strong>{{ recipient.holderName }}</strong>
+              <span class="recipient__type">
+                {{ recipient.accountType === 'CHECKING' ? 'Cuenta principal' : 'Cuenta de ahorros' }} ·
+                {{ formatAccountNumber(recipient.accountNumber) }}
+              </span>
+            </p>
+            <p v-else-if="recipientError" class="hint hint--error">{{ recipientError }}</p>
+          </template>
           <label class="field">
             <span>Monto (COP)</span>
-            <input id="field-amount" :value="form.amount" @input="form.amount = onMoneyInput($event)" type="text" inputmode="decimal" placeholder="Ej: 1,500.00" required autofocus />
+            <input id="field-amount" :value="form.amount" @input="form.amount = onMoneyInput($event)" type="text" inputmode="decimal" placeholder="Ej: 1,500.00" required :autofocus="modal.kind !== 'external'" />
           </label>
           <p v-if="modal.account && modal.kind !== 'deposit'" class="hint">
             Disponible: {{ money(modal.account.balance) }}
@@ -134,7 +169,12 @@
 
         <div class="modal__actions">
           <button class="btn btn--ghost" type="button" @click="closeModal">Cancelar</button>
-          <button id="btn-confirm" class="btn btn--accent" type="submit" :disabled="submitting">
+          <button
+            id="btn-confirm"
+            class="btn btn--accent"
+            type="submit"
+            :disabled="submitting || (modal.kind === 'external' && !recipient)"
+          >
             {{ submitting ? 'Procesando…' : 'Confirmar' }}
           </button>
         </div>
@@ -144,10 +184,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { accountService } from '@/services/accountService';
-import type { Account } from '@/types/accounts';
+import type { Account, AccountHolderInfo } from '@/types/accounts';
+import { copyToClipboard, formatAccountNumber } from '@/utils/accountNumber';
 import { formatAmount, formatMoneyInput, parseMoney } from '@/utils/numberFormat';
 import { pushNotification } from '@/utils/notifications';
 import {
@@ -161,7 +202,7 @@ const onMoneyInput = (e: Event): string => {
   return (el.value = formatMoneyInput(el.value));
 };
 
-type ModalKind = 'create' | 'deposit' | 'withdraw' | 'transfer';
+type ModalKind = 'create' | 'deposit' | 'withdraw' | 'transfer' | 'external';
 
 const router = useRouter();
 const accounts = ref<Account[]>([]);
@@ -176,9 +217,35 @@ const form = reactive({
   name: '',
   amount: '' as string | number,
   targetId: '',
+  accountNumber: '',
   category: 'CASH' as SpendingCategoryId,
   description: '',
 });
+
+// Transferencia a otra cuenta: se busca el titular en cuanto hay 10 dígitos.
+const recipient = ref<AccountHolderInfo | null>(null);
+const recipientError = ref('');
+const lookingUp = ref(false);
+const accountDigits = computed(() => form.accountNumber.replace(/\D/g, ''));
+
+watch(accountDigits, async (digits) => {
+  recipient.value = null;
+  recipientError.value = '';
+  if (digits.length !== 10) return;
+  lookingUp.value = true;
+  try {
+    const found = await accountService.lookup(digits);
+    if (accountDigits.value === digits) recipient.value = found; // ignora respuestas viejas
+  } catch (e) {
+    if (accountDigits.value === digits) recipientError.value = errorMessage(e);
+  } finally {
+    lookingUp.value = false;
+  }
+});
+
+async function copyAccountNumber(n: string) {
+  flash((await copyToClipboard(n)) ? 'Número de cuenta copiado' : `Tu número de cuenta es ${n}`);
+}
 
 const money = (value: number) =>
   '$' + formatAmount(value);
@@ -209,6 +276,7 @@ const modalTitle = computed(() => {
     case 'deposit': return `Depositar en ${name}`;
     case 'withdraw': return `Retirar de ${name}`;
     case 'transfer': return `Transferir desde ${name}`;
+    case 'external': return `Enviar a otra cuenta desde ${name}`;
     default: return '';
   }
 });
@@ -234,6 +302,9 @@ function openModal(kind: ModalKind, account?: Account) {
   form.name = '';
   form.amount = '';
   form.targetId = '';
+  form.accountNumber = '';
+  recipient.value = null;
+  recipientError.value = '';
   form.category = 'CASH';
   form.description = '';
   if (kind === 'transfer') form.targetId = transferTargets.value[0]?.id ?? '';
@@ -280,6 +351,15 @@ async function submitModal() {
         const destName = accounts.value.find(a => a.id === form.targetId)?.name ?? 'otra cuenta';
         await accountService.transfer(account!.id, form.targetId, amount);
         pushNotification({ title: 'Transferencia exitosa', message: `Transferiste ${money(amount)} de «${account!.name}» a «${destName}».`, type: 'success' });
+      }
+      if (kind === 'external') {
+        if (!recipient.value) throw { response: { data: { message: 'Verifica el número de cuenta de destino' } } };
+        const { to } = await accountService.transferExternal(account!.id, accountDigits.value, amount);
+        pushNotification({
+          title: 'Transferencia enviada',
+          message: `Enviaste ${money(amount)} a ${to.holderName} (cta ${formatAccountNumber(to.accountNumber)}).`,
+          type: 'success',
+        });
       }
       flash('Operación realizada');
     }
@@ -351,6 +431,14 @@ onMounted(async () => {
 .account--savings .account__badge { background: rgba(0,229,192,0.15); color: #5eead4; }
 .account__rate { font-size: 0.78rem; font-weight: 700; color: #00e5c0; }
 .account__name { margin: 0.8rem 0 0.2rem; font-size: 1rem; color: #e5e7eb; font-weight: 600; }
+.account__number { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.35rem; font-size: 0.8rem; color: rgba(255,255,255,0.55); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; cursor: default; }
+.account__copy { border: none; background: transparent; color: #5eead4; font-size: 0.72rem; font-weight: 600; cursor: pointer; padding: 0.1rem 0.3rem; border-radius: 6px; }
+.account__copy:hover { background: rgba(0,229,192,0.12); }
+.chip--send { border-color: rgba(96,165,250,0.45); color: #93c5fd; }
+.recipient { margin: -0.4rem 0 0; display: flex; flex-direction: column; gap: 0.15rem; padding: 0.65rem 0.8rem; border-radius: 10px; background: rgba(0,229,192,0.08); border: 1px solid rgba(0,229,192,0.3); font-size: 0.85rem; color: #e5e7eb; }
+.recipient__label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5eead4; }
+.recipient__type { font-size: 0.75rem; color: rgba(255,255,255,0.55); }
+.hint--error { color: #fca5a5; }
 .account__balance { margin: 0 0 1rem; font-size: 1.7rem; font-weight: 700; color: #fff; }
 .account__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
