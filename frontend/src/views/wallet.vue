@@ -188,6 +188,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { accountService } from '@/services/accountService';
 import type { Account, AccountHolderInfo } from '@/types/accounts';
+import { copyToClipboard, formatAccountNumber } from '@/utils/accountNumber';
 import { formatAmount, formatMoneyInput, parseMoney } from '@/utils/numberFormat';
 import { pushNotification } from '@/utils/notifications';
 import {
@@ -242,16 +243,8 @@ watch(accountDigits, async (digits) => {
   }
 });
 
-/** 1234567890 -> 123-456-7890 */
-const formatAccountNumber = (n: string) => (n ? `${n.slice(0, 3)}-${n.slice(3, 6)}-${n.slice(6)}` : '');
-
 async function copyAccountNumber(n: string) {
-  try {
-    await navigator.clipboard.writeText(n);
-    flash('Número de cuenta copiado');
-  } catch {
-    flash(`Tu número de cuenta es ${n}`);
-  }
+  flash((await copyToClipboard(n)) ? 'Número de cuenta copiado' : `Tu número de cuenta es ${n}`);
 }
 
 const money = (value: number) =>

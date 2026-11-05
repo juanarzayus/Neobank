@@ -16,7 +16,13 @@
       </router-link>
     </section>
 
-    <!-- ===== BALANCE CARDS ROW ===== -->
+    <!-- ===== NÚMEROS DE CUENTA ===== -->
+    <AccountNumbersPanel
+      :accounts="accounts"
+      :loading="loading"
+      :holder-name="`${authStore.user?.firstName ?? ''} ${authStore.user?.lastName ?? ''}`.trim()"
+    />
+
     <!-- ===== BALANCE CARDS ROW ===== -->
     <section class="stat-grid">
       <!-- Main balance hero -->
@@ -280,6 +286,7 @@ import type { VirtualCard } from '@/types/cards';
 import type { Account, AccountMovement } from '@/types/accounts';
 import { api } from '@/services/api';
 import { accountService } from '@/services/accountService';
+import AccountNumbersPanel from '@/components/AccountNumbersPanel.vue';
 import logo from '@/assets/LOGONOVA.png';
 import { numberLocale, formatAmount } from '@/utils/numberFormat';
 import { resolveMovementCategory, formatMovementLabel } from '@/utils/spendingCategories';
