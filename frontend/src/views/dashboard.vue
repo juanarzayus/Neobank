@@ -286,6 +286,7 @@ import type { VirtualCard } from '@/types/cards';
 import type { Account, AccountMovement } from '@/types/accounts';
 import { api } from '@/services/api';
 import { accountService } from '@/services/accountService';
+import { walletService } from '@/services/walletService';
 import AccountNumbersPanel from '@/components/AccountNumbersPanel.vue';
 import logo from '@/assets/LOGONOVA.png';
 import { numberLocale, formatAmount } from '@/utils/numberFormat';
@@ -301,6 +302,7 @@ const loading = ref(true);
 const cards = ref<VirtualCard[]>([]);
 const accounts = ref<Account[]>([]);
 const movements = ref<AccountMovement[]>([]);
+const foreignBalanceInCop = ref(0);
 const activeCardIdx = ref(0);
 
 const cardThemes = ['teal', 'indigo', 'rose'];
@@ -346,11 +348,14 @@ const normalizeCard = (c: any): VirtualCard => {
 const totalBalance = computed(() => {
   const accountsSum = accounts.value.reduce((sum, a) => sum + (Number(a.balance) || 0), 0);
   const prepaidSum = cards.value.reduce((sum, c) => sum + (Number(c.prepaidBalance) || 0), 0);
-  return accountsSum + prepaidSum;
+  return accountsSum + prepaidSum + (Number(foreignBalanceInCop.value) || 0);
 });
 
 const isInternalCardTransfer = (m: AccountMovement) =>
-  Boolean(m.description && /^(Recarga|Descarga|Reembolso cierre) tarjeta prepago/i.test(m.description));
+  Boolean(
+    m.description &&
+      /^(?:(Recarga|Descarga|Reembolso cierre) tarjeta prepago|Cambio de divisas:)/i.test(m.description)
+  );
 
 const isCredit = (m: AccountMovement) => ['DEPOSIT', 'TRANSFER_IN', 'INTEREST'].includes(m.type);
 
@@ -476,9 +481,13 @@ const loadDashboardData = async () => {
   localStorage.removeItem('nova_custom_cards');
 
   try {
-    // 1. Fetch Accounts
-    const accList = await accountService.list().catch(() => []);
+    // 1. Fetch Accounts & Multi-Currency Wallets
+    const [accList, fxOverview] = await Promise.all([
+      accountService.list().catch(() => []),
+      walletService.overview().catch(() => null),
+    ]);
     accounts.value = Array.isArray(accList) ? accList : [];
+    foreignBalanceInCop.value = fxOverview?.totalForeignInCop ?? 0;
 
     // 2. Fetch Movements for all accounts
     if (accounts.value.length > 0) {

@@ -25,14 +25,24 @@ import { UnloadVirtualCardUseCase } from '../application/use-cases/cards/UnloadV
 import { UpdateCardLimitsUseCase } from '../application/use-cases/cards/UpdateCardLimitsUseCase';
 import { UpdateCardStatusUseCase } from '../application/use-cases/cards/UpdateCardStatusUseCase';
 import { CheckDatabaseHealthUseCase } from '../application/use-cases/health/CheckDatabaseHealthUseCase';
+import { CloseCurrencyWalletUseCase } from '../application/use-cases/wallets/CloseCurrencyWalletUseCase';
+import { ExecuteCurrencyExchangeUseCase } from '../application/use-cases/wallets/ExecuteCurrencyExchangeUseCase';
+import { GetMultiCurrencyOverviewUseCase } from '../application/use-cases/wallets/GetMultiCurrencyOverviewUseCase';
+import { ListCurrencyExchangesUseCase } from '../application/use-cases/wallets/ListCurrencyExchangesUseCase';
+import { ListExchangeRatesUseCase } from '../application/use-cases/wallets/ListExchangeRatesUseCase';
+import { OpenCurrencyWalletUseCase } from '../application/use-cases/wallets/OpenCurrencyWalletUseCase';
+import { PreviewCurrencyExchangeUseCase } from '../application/use-cases/wallets/PreviewCurrencyExchangeUseCase';
 import { env } from '../infrastructure/config/env';
 import { PostgresHealthCheck } from '../infrastructure/database/PostgresHealthCheck';
 import { pool } from '../infrastructure/database/PostgresPool';
 import { PostgresUnitOfWork } from '../infrastructure/database/PostgresUnitOfWork';
 import { PostgresAccountMovementRepository } from '../infrastructure/database/repositories/PostgresAccountMovementRepository';
 import { PostgresAccountRepository } from '../infrastructure/database/repositories/PostgresAccountRepository';
+import { PostgresCurrencyExchangeRepository } from '../infrastructure/database/repositories/PostgresCurrencyExchangeRepository';
+import { PostgresCurrencyWalletRepository } from '../infrastructure/database/repositories/PostgresCurrencyWalletRepository';
 import { PostgresUserRepository } from '../infrastructure/database/repositories/PostgresUserRepository';
 import { PostgresVirtualCardRepository } from '../infrastructure/database/repositories/PostgresVirtualCardRepository';
+import { InternalExchangeRateProvider } from '../infrastructure/exchange/InternalExchangeRateProvider';
 import { AesGcmCardTokenVault } from '../infrastructure/security/AesGcmCardTokenVault';
 import { HmacTokenService } from '../infrastructure/security/HmacTokenService';
 import { RandomCardDetailsGenerator } from '../infrastructure/security/RandomCardDetailsGenerator';
@@ -41,6 +51,7 @@ import { SystemClock } from '../infrastructure/time/SystemClock';
 import type { HttpAppDeps } from '../presentation/app';
 import { AccountController } from '../presentation/controllers/AccountController';
 import { AuthController } from '../presentation/controllers/AuthController';
+import { CurrencyWalletController } from '../presentation/controllers/CurrencyWalletController';
 import { HealthController } from '../presentation/controllers/HealthController';
 import { VirtualCardController } from '../presentation/controllers/VirtualCardController';
 import { createRequireAuth } from '../presentation/middlewares/authMiddleware';
@@ -53,6 +64,9 @@ export function buildContainer(): HttpAppDeps {
   const accounts = new PostgresAccountRepository(pool);
   const movements = new PostgresAccountMovementRepository(pool);
   const cards = new PostgresVirtualCardRepository(pool);
+  const currencyWallets = new PostgresCurrencyWalletRepository(pool);
+  const currencyExchanges = new PostgresCurrencyExchangeRepository(pool);
+  const exchangeRates = new InternalExchangeRateProvider(pool);
   const hasher = new ScryptPasswordHasher();
   const tokens = new HmacTokenService(env.jwtSecret, {
     access: env.accessTtlSeconds,
@@ -97,11 +111,22 @@ export function buildContainer(): HttpAppDeps {
     authorize: new ProcessCardTransactionUseCase(uow, clock),
   });
 
+  const walletController = new CurrencyWalletController({
+    overview: new GetMultiCurrencyOverviewUseCase(currencyWallets, currencyExchanges, exchangeRates, clock),
+    rates: new ListExchangeRatesUseCase(exchangeRates, clock),
+    exchanges: new ListCurrencyExchangesUseCase(currencyExchanges),
+    open: new OpenCurrencyWalletUseCase(currencyWallets),
+    close: new CloseCurrencyWalletUseCase(uow),
+    quote: new PreviewCurrencyExchangeUseCase(exchangeRates, clock),
+    exchange: new ExecuteCurrencyExchangeUseCase(uow, exchangeRates, clock),
+  });
+
   return {
     controllers: {
       auth,
       accounts: accountController,
       cards: cardController,
+      wallets: walletController,
       health: new HealthController(new CheckDatabaseHealthUseCase(healthCheck)),
     },
     requireAuth: createRequireAuth(tokens),
