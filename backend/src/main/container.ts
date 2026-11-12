@@ -42,7 +42,8 @@ import { PostgresCurrencyExchangeRepository } from '../infrastructure/database/r
 import { PostgresCurrencyWalletRepository } from '../infrastructure/database/repositories/PostgresCurrencyWalletRepository';
 import { PostgresUserRepository } from '../infrastructure/database/repositories/PostgresUserRepository';
 import { PostgresVirtualCardRepository } from '../infrastructure/database/repositories/PostgresVirtualCardRepository';
-import { InternalExchangeRateProvider } from '../infrastructure/exchange/InternalExchangeRateProvider';
+import { ApiExchangeRateProvider } from '../infrastructure/exchange/ApiExchangeRateProvider';
+import { HttpMarketRateSource } from '../infrastructure/exchange/HttpMarketRateSource';
 import { AesGcmCardTokenVault } from '../infrastructure/security/AesGcmCardTokenVault';
 import { HmacTokenService } from '../infrastructure/security/HmacTokenService';
 import { RandomCardDetailsGenerator } from '../infrastructure/security/RandomCardDetailsGenerator';
@@ -66,7 +67,10 @@ export function buildContainer(): HttpAppDeps {
   const cards = new PostgresVirtualCardRepository(pool);
   const currencyWallets = new PostgresCurrencyWalletRepository(pool);
   const currencyExchanges = new PostgresCurrencyExchangeRepository(pool);
-  const exchangeRates = new InternalExchangeRateProvider(pool);
+  const exchangeRates = new ApiExchangeRateProvider(
+    new HttpMarketRateSource(),
+    env.exchangeRates.refreshMinutes * 60 * 1000
+  );
   const hasher = new ScryptPasswordHasher();
   const tokens = new HmacTokenService(env.jwtSecret, {
     access: env.accessTtlSeconds,

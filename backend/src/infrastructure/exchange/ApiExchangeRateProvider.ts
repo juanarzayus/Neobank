@@ -1,4 +1,5 @@
 import type { IExchangeRateProvider } from '../../application/ports/IExchangeRateProvider';
+import type { IMarketRateSource, MarketRatesSnapshot } from '../../application/ports/IMarketRateSource';
 import { ExchangeRateNotAvailableError, ValidationError } from '../../domain/errors/DomainError';
 import {
   FOREIGN_CURRENCIES,
@@ -10,66 +11,45 @@ import {
   type InternalCurrencyRate,
 } from '../../domain/value-objects/ExchangeRate';
 import { roundMoney } from '../../domain/value-objects/Money';
-import type { Queryable } from '../database/PostgresPool';
 
-interface SeedRate {
-  readonly copRate: number;
-  readonly spreadRate: number;
-}
-
-/**
- * Tasas base internas de respaldo en caso de que la tabla aún no tenga filas para una divisa.
- */
-const DEFAULT_INTERNAL_RATES: Record<ForeignCurrencyCode, SeedRate> = {
-  USD: { copRate: 4150.0, spreadRate: 0.005 },
-  EUR: { copRate: 4520.0, spreadRate: 0.006 },
-  GBP: { copRate: 5280.0, spreadRate: 0.0065 },
-  MXN: { copRate: 215.0, spreadRate: 0.008 },
-  BRL: { copRate: 740.0, spreadRate: 0.008 },
+/** Margen operativo del neobanco por divisa (0.005 = 0.50%). */
+const SPREAD_RATES: Record<ForeignCurrencyCode, number> = {
+  USD: 0.005,
+  EUR: 0.006,
+  GBP: 0.0065,
+  MXN: 0.008,
+  BRL: 0.008,
 };
 
-const UNDEFINED_TABLE = '42P01';
+const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
 
 /**
- * Adaptador de salida (driven) que gestiona las tasas de cambio internas de tesorería NOVA.
- * Persiste y lee tasas desde PostgreSQL (`exchange_rates`) sin depender de APIs externas,
- * y calcula conversiones directas contra COP o cruzadas entre divisas aplicando el spread interno.
+ * Adaptador de salida (driven) que obtiene las tasas del día desde la API de mercado,
+ * las mantiene en memoria durante `cacheTtlMs` y calcula conversiones directas contra COP
+ * o cruzadas entre divisas aplicando el spread del neobanco.
  */
-export class InternalExchangeRateProvider implements IExchangeRateProvider {
-  constructor(private readonly db: Queryable) {}
+export class ApiExchangeRateProvider implements IExchangeRateProvider {
+  private cache: { snapshot: MarketRatesSnapshot; fetchedAt: number } | null = null;
+  private inFlight: Promise<MarketRatesSnapshot> | null = null;
+
+  constructor(
+    private readonly market: IMarketRateSource,
+    private readonly cacheTtlMs: number = DEFAULT_CACHE_TTL_MS
+  ) {}
 
   async listInternalRates(now: Date): Promise<InternalCurrencyRate[]> {
-    const dbRates = new Map<ForeignCurrencyCode, { copRate: number; spreadRate: number; updatedAt: Date }>();
-
-    try {
-      const { rows } = await this.db.query('SELECT * FROM exchange_rates');
-      for (const row of rows) {
-        const code = row.currency as ForeignCurrencyCode;
-        if ((FOREIGN_CURRENCIES as readonly string[]).includes(code)) {
-          dbRates.set(code, {
-            copRate: Number(row.cop_rate),
-            spreadRate: Number(row.spread_rate),
-            updatedAt: new Date(row.updated_at),
-          });
-        }
-      }
-    } catch (err) {
-      if ((err as { code?: string }).code !== UNDEFINED_TABLE) throw err;
-    }
+    const snapshot = await this.getSnapshot(now);
 
     return FOREIGN_CURRENCIES.map((currency) => {
-      const found = dbRates.get(currency);
-      const copRate = found?.copRate ?? DEFAULT_INTERNAL_RATES[currency].copRate;
-      const spreadRate = found?.spreadRate ?? DEFAULT_INTERNAL_RATES[currency].spreadRate;
-      const updatedAt = found?.updatedAt ?? now;
-
+      const copRate = snapshot.copRates[currency];
+      const spreadRate = SPREAD_RATES[currency];
       return {
         currency,
         copRate: roundMoney(copRate),
         spreadRate,
         buyCopRate: roundMoney(copRate * (1 + spreadRate)),
         sellCopRate: roundMoney(copRate * (1 - spreadRate)),
-        updatedAt,
+        updatedAt: snapshot.asOf,
       };
     });
   }
@@ -86,15 +66,13 @@ export class InternalExchangeRateProvider implements IExchangeRateProvider {
     if (from === 'COP') {
       const target = map.get(to as ForeignCurrencyCode);
       if (!target) throw new ExchangeRateNotAvailableError();
-      const midMarketRate = 1 / target.copRate;
       const buyCopPrice = target.copRate * (1 + target.spreadRate);
-      const effectiveRate = 1 / buyCopPrice;
 
       return new ExchangeRateQuote({
         fromCurrency: from,
         toCurrency: to,
-        midMarketRate,
-        effectiveRate,
+        midMarketRate: 1 / target.copRate,
+        effectiveRate: 1 / buyCopPrice,
         spreadRate: target.spreadRate,
         updatedAt: target.updatedAt,
       });
@@ -104,14 +82,12 @@ export class InternalExchangeRateProvider implements IExchangeRateProvider {
     if (to === 'COP') {
       const source = map.get(from as ForeignCurrencyCode);
       if (!source) throw new ExchangeRateNotAvailableError();
-      const midMarketRate = source.copRate;
-      const effectiveRate = source.copRate * (1 - source.spreadRate);
 
       return new ExchangeRateQuote({
         fromCurrency: from,
         toCurrency: to,
-        midMarketRate,
-        effectiveRate,
+        midMarketRate: source.copRate,
+        effectiveRate: source.copRate * (1 - source.spreadRate),
         spreadRate: source.spreadRate,
         updatedAt: source.updatedAt,
       });
@@ -124,17 +100,39 @@ export class InternalExchangeRateProvider implements IExchangeRateProvider {
 
     const midMarketRate = source.copRate / target.copRate;
     const crossSpread = (source.spreadRate + target.spreadRate) / 2;
-    const effectiveRate = midMarketRate * (1 - crossSpread);
-    const updatedAt = source.updatedAt > target.updatedAt ? source.updatedAt : target.updatedAt;
 
     return new ExchangeRateQuote({
       fromCurrency: from,
       toCurrency: to,
       midMarketRate,
-      effectiveRate,
+      effectiveRate: midMarketRate * (1 - crossSpread),
       spreadRate: crossSpread,
-      updatedAt,
+      updatedAt: source.updatedAt,
     });
   }
-}
 
+  /** Devuelve las tasas en caché o las descarga de la API si vencieron. */
+  private async getSnapshot(now: Date): Promise<MarketRatesSnapshot> {
+    if (this.cache && now.getTime() - this.cache.fetchedAt < this.cacheTtlMs) {
+      return this.cache.snapshot;
+    }
+
+    // Varias peticiones simultáneas comparten una sola descarga.
+    this.inFlight ??= this.market
+      .fetchCopRates()
+      .then((snapshot) => {
+        this.cache = { snapshot, fetchedAt: now.getTime() };
+        return snapshot;
+      })
+      .finally(() => {
+        this.inFlight = null;
+      });
+
+    try {
+      return await this.inFlight;
+    } catch (err) {
+      console.error(`[tasas] No se pudieron obtener las tasas: ${(err as Error).message}`);
+      throw new ExchangeRateNotAvailableError();
+    }
+  }
+}
