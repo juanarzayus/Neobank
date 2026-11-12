@@ -21,6 +21,10 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET || 'dev-only-secret-change-me',
   accessTtlSeconds: 15 * 60,
   refreshTtlSeconds: 7 * 24 * 60 * 60,
+  exchangeRates: {
+    /** Minutos que se mantienen en memoria las tasas descargadas de la API. */
+    refreshMinutes: Number(process.env.EXCHANGE_RATES_REFRESH_MINUTES) || 60,
+  },
   db: {
     host: process.env.DB_HOST,
     port: Number(process.env.DB_PORT) || 5432,

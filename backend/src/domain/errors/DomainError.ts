@@ -79,6 +79,6 @@ export class CurrencyWalletAlreadyExistsError extends ConflictError {
 
 export class ExchangeRateNotAvailableError extends BusinessRuleError {
   constructor() {
-    super('Tasa de cambio interna no disponible para este par de monedas');
+    super('Tasa de cambio no disponible en este momento, intenta de nuevo más tarde');
   }
 }
